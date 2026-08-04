@@ -59,4 +59,5 @@ public class OpcionCampo {
     public String getDescripcion() { return descripcion; }
     public int getOrden() { return orden; }
     public String getGrupoExclusion() { return grupoExclusion; }
+    public CampoParaLlenar getCampo() { return campo; }
 }

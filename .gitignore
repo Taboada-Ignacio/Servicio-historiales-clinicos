@@ -4,6 +4,7 @@ target/
 *.jar
 *.war
 .mvn/timing.properties
+.m2/
 
 # Node / Vite
 node_modules/

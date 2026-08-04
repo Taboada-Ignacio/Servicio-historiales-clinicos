@@ -318,19 +318,78 @@ excepcion/       errores de negocio y tratamiento centralizado
 
 La autenticación todavía está fuera del alcance. Por eso los controladores reciben temporalmente `idProfesional` en la ruta. Cuando se incorpore JWT, el identificador del profesional deberá obtenerse de sus claims y no confiarse al cuerpo de la solicitud.
 
+## Índice de endpoints del servicio
+
+La URL local del microservicio es `http://localhost:8080`. Actualmente expone diez endpoints funcionales, agrupados en dos recursos:
+
+| Recurso | Método | Ruta |
+|---|---|---|
+| Fichas médicas | `POST` | `/api/v1/profesionales/{idProfesional}/fichas-medicas` |
+| Fichas médicas | `GET` | `/api/v1/profesionales/{idProfesional}/fichas-medicas` |
+| Fichas médicas | `GET` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` |
+| Fichas médicas | `PUT` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` |
+| Fichas médicas | `DELETE` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` |
+| Pacientes | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes` |
+| Pacientes | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes` |
+| Pacientes | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` |
+| Pacientes | `PUT` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` |
+| Pacientes | `DELETE` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` |
+
+Además, Spring Boot Actuator y Springdoc exponen endpoints operativos:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/actuator/health` | Estado general y sondas de salud del servicio |
+| `GET` | `/actuator/info` | Información pública configurada del servicio |
+| `GET` | `/v3/api-docs` | Especificación OpenAPI en JSON |
+| `GET` | `/swagger-ui.html` | Interfaz web interactiva de Swagger |
+
+Las rutas de Actuator pueden incluir enlaces y subrutas generadas por Spring. Solamente `health` e `info` están habilitados para exposición externa en la configuración actual.
+
 ## API de plantillas de ficha médica
 
 El profesional se representa mediante un identificador externo incluido en la URL. Crear o actualizar una ficha procesa el agregado completo: plantilla, detalles, campos y opciones.
 
-| Método | Ruta | Operación |
-|---|---|---|
-| `POST` | `/api/v1/profesionales/{idProfesional}/fichas-medicas` | Crear una plantilla |
-| `GET` | `/api/v1/profesionales/{idProfesional}/fichas-medicas` | Listar las plantillas del profesional |
-| `GET` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` | Consultar una plantilla |
-| `PUT` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` | Reemplazar una plantilla completa |
-| `DELETE` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` | Eliminar una plantilla |
+| Método | Ruta | Operación | Respuesta exitosa |
+|---|---|---|---|
+| `POST` | `/api/v1/profesionales/{idProfesional}/fichas-medicas` | Crear una plantilla | `201 Created` |
+| `GET` | `/api/v1/profesionales/{idProfesional}/fichas-medicas` | Listar las plantillas del profesional | `200 OK` |
+| `GET` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` | Consultar una plantilla | `200 OK` |
+| `PUT` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` | Reemplazar una plantilla completa | `200 OK` |
+| `DELETE` | `/api/v1/profesionales/{idProfesional}/fichas-medicas/{idFicha}` | Eliminar una plantilla | `204 No Content` |
 
-Ejemplo de creación:
+Los parámetros `idProfesional` e `idFicha` deben ser números enteros positivos.
+
+### Estructura de una ficha médica
+
+| Nivel | Campo | Tipo | Obligatorio | Validación |
+|---|---|---|---|---|
+| Ficha | `nombre` | texto | Sí | Máximo 120 caracteres |
+| Ficha | `descripcion` | texto | No | Máximo 500 caracteres |
+| Ficha | `detalles` | arreglo | Sí | Debe contener al menos una sección |
+| Detalle | `titulo` | texto | Sí | Máximo 150 caracteres |
+| Detalle | `descripcion` | texto | No | Máximo 500 caracteres |
+| Detalle | `orden` | entero | Sí | Cero o positivo |
+| Detalle | `campos` | arreglo | Sí | Debe contener al menos un campo |
+| Campo | `titulo` | texto | Sí | Máximo 150 caracteres |
+| Campo | `descripcion` | texto | No | Máximo 500 caracteres |
+| Campo | `orden` | entero | Sí | Cero o positivo |
+| Campo | `permiteSeleccionMultiple` | booleano | No | Su valor predeterminado es `false` |
+| Campo | `opciones` | arreglo | Sí | Debe contener al menos una opción |
+| Opción | `titulo` | texto | Según tipo | Máximo 150 caracteres |
+| Opción | `tipo` | enumeración | Sí | `SELECCION`, `ENTRADA` o `SI_NO` |
+| Opción | `descripcion` | texto | No | Máximo 500 caracteres |
+| Opción | `orden` | entero | Sí | Cero o positivo |
+| Opción | `grupoExclusion` | texto | No | Máximo 80 caracteres |
+
+### Crear una ficha médica
+
+```http
+POST /api/v1/profesionales/10/fichas-medicas
+Content-Type: application/json
+```
+
+Ejemplo de cuerpo:
 
 ```json
 {
@@ -371,6 +430,84 @@ Ejemplo de creación:
 }
 ```
 
+Respuesta `201 Created`:
+
+```json
+{
+  "id": 1,
+  "idProfesional": 10,
+  "nombre": "Historia clínica general",
+  "descripcion": "Plantilla inicial",
+  "fechaCreacion": "2026-08-04T18:30:00Z",
+  "fechaActualizacion": "2026-08-04T18:30:00Z",
+  "version": 0,
+  "detalles": [
+    {
+      "id": 1,
+      "titulo": "Antecedentes personales no patológicos",
+      "descripcion": null,
+      "orden": 0,
+      "campos": [
+        {
+          "id": 1,
+          "titulo": "Tabaquismo",
+          "descripcion": null,
+          "orden": 0,
+          "permiteSeleccionMultiple": false,
+          "opciones": [
+            {
+              "id": 1,
+              "titulo": "Sí",
+              "tipo": "SELECCION",
+              "descripcion": null,
+              "orden": 0,
+              "grupoExclusion": "smoking"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+La respuesta incluye una cabecera `Location` con la URL de la ficha creada.
+
+### Listar fichas médicas
+
+```http
+GET /api/v1/profesionales/10/fichas-medicas
+```
+
+Devuelve `200 OK` con un arreglo de fichas completas, incluidos sus detalles, campos y opciones. Las fichas se ordenan por fecha de creación ascendente. Si el profesional no posee fichas, devuelve un arreglo vacío.
+
+### Consultar una ficha médica
+
+```http
+GET /api/v1/profesionales/10/fichas-medicas/1
+```
+
+Devuelve `200 OK` con la ficha completa. Si no existe o pertenece a otro profesional, devuelve `404 Not Found`.
+
+### Actualizar una ficha médica
+
+```http
+PUT /api/v1/profesionales/10/fichas-medicas/1
+Content-Type: application/json
+```
+
+El cuerpo utiliza la misma estructura que la creación. La operación reemplaza el nombre, la descripción y toda la estructura anidada de detalles, campos y opciones. Devuelve `200 OK` con la ficha actualizada.
+
+### Eliminar una ficha médica
+
+```http
+DELETE /api/v1/profesionales/10/fichas-medicas/1
+```
+
+Devuelve `204 No Content` sin cuerpo. La eliminación en cascada alcanza los detalles, campos y opciones de la plantilla. Si la ficha no existe o pertenece a otro profesional, devuelve `404 Not Found`.
+
+### Reglas de negocio y errores
+
 Reglas aplicadas por el backend:
 
 - Máximo de cinco fichas por profesional.
@@ -388,6 +525,230 @@ Reglas aplicadas por el backend:
 - Cuando un campo ya contiene `SI_NO`, el frontend deshabilita ese tipo en las demás opciones para impedir que se agregue por segunda vez.
 - Una ficha solo puede consultarse, actualizarse o eliminarse desde el identificador de su profesional propietario.
 - La actualización utiliza control de versión optimista en persistencia.
+
+| Estado | Situación |
+|---|---|
+| `400 Bad Request` | Identificadores no positivos, campos obligatorios ausentes, límites de longitud excedidos, colección anidada vacía, orden negativo o tipo de opción desconocido |
+| `404 Not Found` | La ficha no existe o no pertenece al profesional indicado |
+| `409 Conflict` | El profesional ya posee cinco fichas, un campo contiene más de una opción `SI_NO` o se omitió un título en una opción que lo requiere |
+
+## API de pacientes
+
+Un profesional puede registrar uno o más pacientes. Todos los endpoints incluyen `idProfesional` en la ruta para identificar al propietario del paciente y evitar que un profesional consulte, modifique o elimine pacientes pertenecientes a otro.
+
+Ruta base:
+
+```text
+/api/v1/profesionales/{idProfesional}/pacientes
+```
+
+### Endpoints
+
+| Método | Ruta | Operación | Respuesta exitosa |
+|---|---|---|---|
+| `POST` | `/api/v1/profesionales/{idProfesional}/pacientes` | Crear un paciente | `201 Created` |
+| `GET` | `/api/v1/profesionales/{idProfesional}/pacientes` | Listar los pacientes del profesional | `200 OK` |
+| `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` | Consultar un paciente | `200 OK` |
+| `PUT` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` | Actualizar todos los datos de un paciente | `200 OK` |
+| `DELETE` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` | Eliminar un paciente | `204 No Content` |
+
+Los parámetros `idProfesional` e `idPaciente` deben ser números enteros positivos.
+
+### Datos de entrada
+
+El cuerpo utilizado para crear y actualizar un paciente posee los siguientes campos:
+
+| Campo | Tipo | Obligatorio | Validación |
+|---|---|---|---|
+| `nombre` | texto | Sí | No puede estar vacío; máximo 100 caracteres |
+| `apellido` | texto | Sí | No puede estar vacío; máximo 100 caracteres |
+| `dni` | texto | Sí | Entre 6 y 12 dígitos |
+| `telefono` | texto | No | Máximo 30 caracteres |
+| `fechaNacimiento` | fecha ISO `YYYY-MM-DD` | Sí | Debe ser anterior a la fecha actual |
+| `sexo` | enumeración | Sí | `FEMENINO`, `MASCULINO`, `OTRO` o `NO_ESPECIFICA` |
+| `fichas` | arreglo | No | Cero, una o varias fichas médicas completas |
+
+El DNI se representa como texto para conservar posibles ceros iniciales. Debe ser único entre los pacientes de un mismo profesional, aunque puede repetirse para profesionales diferentes.
+
+### Asignación inicial de fichas médicas
+
+Durante el alta se pueden seleccionar cero, una o varias plantillas pertenecientes al mismo profesional. Cada elemento de `fichas` contiene:
+
+| Campo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `idFichaMedica` | entero positivo | Sí | Plantilla que se asignará al paciente |
+| `respuestas` | arreglo | Sí | Una respuesta por cada opción de la plantilla |
+| `respuestas[].idOpcion` | entero positivo | Sí | Opción contestada |
+| `respuestas[].valor` | texto | Según tipo | Texto de `ENTRADA` o `SI`/`NO` para `SI_NO` |
+| `respuestas[].seleccionada` | booleano | Para `SELECCION` | Indica si la opción quedó seleccionada |
+
+Todas las opciones de cada ficha seleccionada deben estar representadas en `respuestas`. Las opciones `SI_NO` son las únicas que requieren obligatoriamente una elección. Las opciones `SELECCION` pueden quedar sin marcar; si se marca alguna, se respetan `permiteSeleccionMultiple` y `grupoExclusion`. Cuando una opción `ENTRADA` se envía vacía o sin valor, el backend guarda automáticamente `No aplica`.
+
+La creación del paciente, las instancias `FichaPaciente` y sus respuestas se realiza en una única transacción. Si una ficha no pertenece al profesional o alguna respuesta es inválida, no se guarda ninguna parte del alta. Una plantilla no puede repetirse dentro de la misma solicitud, pero un paciente puede conservar varias fichas médicas asignadas con respuestas independientes.
+
+### Crear un paciente
+
+```http
+POST /api/v1/profesionales/10/pacientes
+Content-Type: application/json
+```
+
+```json
+{
+  "nombre": "Ana",
+  "apellido": "Pérez",
+  "dni": "30111222",
+  "telefono": "+54 11 5555-1234",
+  "fechaNacimiento": "1990-05-20",
+  "sexo": "FEMENINO",
+  "fichas": [
+    {
+      "idFichaMedica": 3,
+      "respuestas": [
+        { "idOpcion": 15, "seleccionada": true },
+        { "idOpcion": 16, "seleccionada": false },
+        { "idOpcion": 17, "valor": "Control inicial" },
+        { "idOpcion": 18, "valor": "NO" }
+      ]
+    }
+  ]
+}
+```
+
+Respuesta `201 Created`:
+
+```json
+{
+  "id": 1,
+  "idProfesional": 10,
+  "nombre": "Ana",
+  "apellido": "Pérez",
+  "dni": "30111222",
+  "telefono": "+54 11 5555-1234",
+  "fechaNacimiento": "1990-05-20",
+  "sexo": "FEMENINO",
+  "fechaCreacion": "2026-08-04T18:30:00Z",
+  "fechaActualizacion": "2026-08-04T18:30:00Z",
+  "version": 0,
+  "fichas": [
+    {
+      "id": 1,
+      "idFichaMedica": 3,
+      "nombreFicha": "Historia clínica general",
+      "fechaAsignacion": "2026-08-04T18:30:00Z",
+      "respuestas": [
+        {
+          "id": 1,
+          "idOpcion": 15,
+          "tituloDetalle": "Antecedentes personales",
+          "tituloCampo": "Tabaquismo",
+          "tituloOpcion": "Sí",
+          "tipo": "SELECCION",
+          "valor": null,
+          "seleccionada": true
+        }
+      ]
+    }
+  ]
+}
+```
+
+La respuesta incluye una cabecera `Location` con la URL del paciente creado.
+
+### Listar pacientes
+
+```http
+GET /api/v1/profesionales/10/pacientes
+```
+
+Devuelve un arreglo con los pacientes del profesional, ordenados por apellido y nombre. Si el profesional no posee pacientes, devuelve un arreglo vacío.
+
+En la interfaz, el listado puede filtrarse por la combinación `apellido - nombre`, sin distinguir mayúsculas, minúsculas ni tildes. La acción **Ver todos los datos** presenta en una sola página los datos personales y todas las fichas cargadas, agrupando cada respuesta por sección y campo.
+
+```json
+[
+  {
+    "id": 1,
+    "idProfesional": 10,
+    "nombre": "Ana",
+    "apellido": "Pérez",
+    "dni": "30111222",
+    "telefono": "+54 11 5555-1234",
+    "fechaNacimiento": "1990-05-20",
+    "sexo": "FEMENINO",
+    "fechaCreacion": "2026-08-04T18:30:00Z",
+    "fechaActualizacion": "2026-08-04T18:30:00Z",
+    "version": 0,
+    "fichas": []
+  }
+]
+```
+
+### Consultar un paciente
+
+```http
+GET /api/v1/profesionales/10/pacientes/1
+```
+
+Devuelve `200 OK` con el paciente solicitado. Si el paciente no existe o pertenece a otro profesional, devuelve `404 Not Found`.
+
+### Actualizar un paciente
+
+```http
+PUT /api/v1/profesionales/10/pacientes/1
+Content-Type: application/json
+```
+
+La actualización reemplaza todos los datos personales editables, por lo que deben enviarse nuevamente todos los campos obligatorios. Actualmente no agrega, reemplaza ni elimina las fichas ya asignadas al paciente.
+
+```json
+{
+  "nombre": "Ana María",
+  "apellido": "Pérez",
+  "dni": "30111222",
+  "telefono": "+54 11 4444-5678",
+  "fechaNacimiento": "1990-05-20",
+  "sexo": "FEMENINO"
+}
+```
+
+Devuelve `200 OK` con el paciente actualizado.
+
+### Eliminar un paciente
+
+```http
+DELETE /api/v1/profesionales/10/pacientes/1
+```
+
+Devuelve `204 No Content` sin cuerpo. Si el paciente no existe o pertenece a otro profesional, devuelve `404 Not Found`.
+
+### Errores y reglas de negocio
+
+| Estado | Situación |
+|---|---|
+| `400 Bad Request` | Identificadores no positivos, campos obligatorios ausentes, DNI con formato inválido, fecha no pasada o valor de sexo desconocido |
+| `404 Not Found` | El paciente no existe o no pertenece al profesional indicado |
+| `409 Conflict` | DNI duplicado, ficha repetida, respuestas incompletas o inválidas, selección múltiple no permitida o incumplimiento de un grupo excluyente |
+
+Ejemplo de error de validación:
+
+```json
+{
+  "marcaTiempo": "2026-08-04T18:30:00Z",
+  "estado": 400,
+  "error": "Bad Request",
+  "mensaje": "La solicitud contiene datos inválidos",
+  "ruta": "/api/v1/profesionales/10/pacientes",
+  "violaciones": [
+    {
+      "campo": "dni",
+      "mensaje": "debe contener entre 6 y 12 dígitos"
+    }
+  ]
+}
+```
+
+La entidad utiliza control de versión optimista y registra las fechas de creación y última actualización.
 
 Swagger UI queda disponible en `http://localhost:8080/swagger-ui.html` cuando el microservicio está en ejecución.
 

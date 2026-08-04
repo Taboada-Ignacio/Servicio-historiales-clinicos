@@ -67,4 +67,5 @@ public class CampoParaLlenar {
     public int getOrden() { return orden; }
     public boolean isPermiteSeleccionMultiple() { return permiteSeleccionMultiple; }
     public List<OpcionCampo> getOpciones() { return opciones; }
+    public DetalleFicha getDetalle() { return detalle; }
 }

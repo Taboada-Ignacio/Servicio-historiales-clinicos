@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { apiFichasMedicas } from './api/fichasMedicas.js'
+import { apiPacientes } from './api/pacientes.js'
 
 const modulos = [
   { icono: 'FM', titulo: 'Fichas médicas', descripcion: 'Diseñá y administrá plantillas clínicas.', disponible: true },
-  { icono: 'PA', titulo: 'Pacientes', descripcion: 'Información personal y datos de contacto.' },
+  { icono: 'PA', titulo: 'Pacientes', descripcion: 'Información personal y datos de contacto.', disponible: true, destino: 'pacientes' },
   { icono: 'HC', titulo: 'Historias clínicas', descripcion: 'Evoluciones y antecedentes por paciente.' },
   { icono: 'TR', titulo: 'Tratamientos', descripcion: 'Sesiones, avances y observaciones.' },
   { icono: 'EP', titulo: 'Epicrisis', descripcion: 'Síntesis de episodios clínicos.' },
@@ -13,18 +14,26 @@ const nuevaOpcion = (orden = 0) => ({ titulo: '', tipo: 'SELECCION', descripcion
 const nuevoCampo = (orden = 0) => ({ titulo: '', descripcion: '', orden, permiteSeleccionMultiple: false, opciones: [nuevaOpcion()] })
 const nuevoDetalle = (orden = 0) => ({ titulo: '', descripcion: '', orden, campos: [nuevoCampo()] })
 const fichaVacia = () => ({ nombre: '', descripcion: '', detalles: [nuevoDetalle()] })
+const pacienteVacio = () => ({ nombre: '', apellido: '', dni: '', telefono: '', fechaNacimiento: '', sexo: '' })
+
+const vistaDesdeRuta = () => {
+  if (window.location.pathname.includes('fichas-medicas')) return 'fichas'
+  if (window.location.pathname.includes('pacientes')) return 'pacientes'
+  return 'inicio'
+}
 
 export default function App() {
-  const [vista, setVista] = useState(window.location.pathname.includes('fichas-medicas') ? 'fichas' : 'inicio')
+  const [vista, setVista] = useState(vistaDesdeRuta)
 
   const navegar = (destino) => {
-    const ruta = destino === 'fichas' ? '/fichas-medicas' : '/'
+    const rutas = { fichas: '/fichas-medicas', pacientes: '/pacientes', inicio: '/' }
+    const ruta = rutas[destino]
     window.history.pushState({}, '', ruta)
     setVista(destino)
   }
 
   useEffect(() => {
-    const volver = () => setVista(window.location.pathname.includes('fichas-medicas') ? 'fichas' : 'inicio')
+    const volver = () => setVista(vistaDesdeRuta())
     window.addEventListener('popstate', volver)
     return () => window.removeEventListener('popstate', volver)
   }, [])
@@ -38,12 +47,14 @@ export default function App() {
         </button>
         <span className="entorno">Entorno de desarrollo</span>
       </header>
-      {vista === 'inicio' ? <Inicio onAbrirFichas={() => navegar('fichas')} /> : <GestionFichas onVolver={() => navegar('inicio')} />}
+      {vista === 'inicio' && <Inicio onAbrirModulo={navegar} />}
+      {vista === 'fichas' && <GestionFichas onVolver={() => navegar('inicio')} />}
+      {vista === 'pacientes' && <GestionPacientes onVolver={() => navegar('inicio')} />}
     </div>
   )
 }
 
-function Inicio({ onAbrirFichas }) {
+function Inicio({ onAbrirModulo }) {
   return (
     <main>
       <section className="hero">
@@ -54,12 +65,12 @@ function Inicio({ onAbrirFichas }) {
       <section className="contenido">
         <div className="titulo-seccion">
           <div><p className="sobrelinea">Módulos</p><h2>¿Qué querés gestionar?</h2></div>
-          <span>1 de {modulos.length} disponible</span>
+          <span>{modulos.filter((modulo) => modulo.disponible).length} de {modulos.length} disponibles</span>
         </div>
         <div className="grilla-modulos">
           {modulos.map((modulo) => (
             <button key={modulo.titulo} className={`tarjeta-modulo ${modulo.disponible ? 'activa' : ''}`}
-              onClick={modulo.disponible ? onAbrirFichas : undefined} disabled={!modulo.disponible}>
+              onClick={modulo.disponible ? () => onAbrirModulo(modulo.destino || 'fichas') : undefined} disabled={!modulo.disponible}>
               <span className="icono-modulo">{modulo.icono}</span>
               <span><strong>{modulo.titulo}</strong><small>{modulo.descripcion}</small></span>
               <span className="estado-modulo">{modulo.disponible ? 'Abrir →' : 'Próximamente'}</span>
@@ -97,6 +108,7 @@ function GestionFichas({ onVolver }) {
       setMensaje({ tipo: 'exito', texto: editando ? 'Ficha actualizada correctamente.' : 'Ficha creada correctamente.' })
       setEditando(null); setFicha(fichaVacia())
       if (editando) { setModo('consultar'); await cargar() }
+      else setModo(null)
     } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
     finally { setCargando(false) }
   }
@@ -168,6 +180,299 @@ function GestionFichas({ onVolver }) {
       {modo === 'vista-previa' && fichaPrevia && <VistaPreviaFicha ficha={fichaPrevia} onEditar={() => editar(fichaPrevia)} />}
     </main>
   )
+}
+
+function GestionPacientes({ onVolver }) {
+  const [modo, setModo] = useState(null)
+  const [idProfesional, setIdProfesional] = useState('1')
+  const [pacientes, setPacientes] = useState([])
+  const [paciente, setPaciente] = useState(pacienteVacio)
+  const [editando, setEditando] = useState(null)
+  const [cargando, setCargando] = useState(false)
+  const [cargandoFichas, setCargandoFichas] = useState(false)
+  const [mensaje, setMensaje] = useState(null)
+  const [fichasDisponibles, setFichasDisponibles] = useState([])
+  const [idsFichasSeleccionadas, setIdsFichasSeleccionadas] = useState([])
+  const [respuestasFicha, setRespuestasFicha] = useState({})
+  const [busqueda, setBusqueda] = useState('')
+  const [pacienteSeleccionado, setPacienteSeleccionado] = useState(null)
+
+  const normalizarBusqueda = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
+  const pacientesFiltrados = pacientes.filter((item) =>
+    normalizarBusqueda(`${item.apellido} - ${item.nombre}`).includes(normalizarBusqueda(busqueda)))
+
+  const cargar = async () => {
+    if (!idProfesional) return
+    setCargando(true); setMensaje(null)
+    try { setPacientes(await apiPacientes.listar(idProfesional)) }
+    catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const guardar = async (evento) => {
+    evento.preventDefault()
+    const fichasSeleccionadas = fichasDisponibles.filter((ficha) => idsFichasSeleccionadas.includes(String(ficha.id)))
+    if (!editando) {
+      const detalleConfirmacion = fichasSeleccionadas.length
+        ? ` con ${fichasSeleccionadas.length} ficha${fichasSeleccionadas.length === 1 ? '' : 's'} médica${fichasSeleccionadas.length === 1 ? '' : 's'} asignada${fichasSeleccionadas.length === 1 ? '' : 's'}`
+        : ' sin fichas médicas asignadas'
+      if (!window.confirm(`¿Confirmás el registro de ${paciente.nombre} ${paciente.apellido}${detalleConfirmacion}?`)) return
+    }
+    setCargando(true); setMensaje(null)
+    try {
+      const solicitud = { ...paciente }
+      if (fichasSeleccionadas.length) solicitud.fichas = fichasSeleccionadas.map((ficha) => {
+        const idsOpciones = new Set(ficha.detalles.flatMap((detalle) => detalle.campos.flatMap((campo) => campo.opciones.map((opcion) => String(opcion.id)))))
+        return { idFichaMedica: ficha.id, respuestas: Object.entries(respuestasFicha)
+          .filter(([idOpcion]) => idsOpciones.has(idOpcion)).map(([, respuesta]) => respuesta) }
+      })
+      if (editando) await apiPacientes.actualizar(idProfesional, editando, solicitud)
+      else await apiPacientes.crear(idProfesional, solicitud)
+      const textoExito = editando ? 'Paciente actualizado correctamente.' : 'Paciente creado correctamente.'
+      setEditando(null); setPaciente(pacienteVacio())
+      if (editando) { setModo('consultar'); await cargar() }
+      else setModo(null)
+      setMensaje({ tipo: 'exito', texto: textoExito })
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const editar = (seleccionado) => {
+    setPaciente({
+      nombre: seleccionado.nombre,
+      apellido: seleccionado.apellido,
+      dni: seleccionado.dni,
+      telefono: seleccionado.telefono || '',
+      fechaNacimiento: seleccionado.fechaNacimiento,
+      sexo: seleccionado.sexo,
+    })
+    setEditando(seleccionado.id)
+    setModo('editar')
+    setMensaje(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const volverAlMenu = () => {
+    setModo(null)
+    setEditando(null)
+    setPaciente(pacienteVacio())
+    setMensaje(null)
+    setIdsFichasSeleccionadas([])
+    setRespuestasFicha({})
+    setPacienteSeleccionado(null)
+  }
+
+  const abrirConsulta = () => {
+    setModo('consultar')
+    setBusqueda('')
+    cargar()
+  }
+
+  const verPaciente = (seleccionado) => {
+    setPacienteSeleccionado(seleccionado)
+    setModo('vista-paciente')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const cargarFichasDisponibles = async () => {
+    if (!idProfesional) return
+    setCargandoFichas(true); setMensaje(null)
+    try { setFichasDisponibles(await apiFichasMedicas.listar(idProfesional)) }
+    catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargandoFichas(false) }
+  }
+
+  const abrirRegistro = () => {
+    setModo('crear')
+    setPaciente(pacienteVacio())
+    setIdsFichasSeleccionadas([])
+    setRespuestasFicha({})
+    cargarFichasDisponibles()
+  }
+
+  const seleccionarFicha = (idFicha, seleccionada) => {
+    const ficha = fichasDisponibles.find((item) => String(item.id) === idFicha)
+    if (!ficha) return
+    if (!seleccionada) {
+      const idsOpciones = new Set(ficha.detalles.flatMap((detalle) => detalle.campos.flatMap((campo) => campo.opciones.map((opcion) => String(opcion.id)))))
+      setIdsFichasSeleccionadas((actuales) => actuales.filter((id) => id !== idFicha))
+      setRespuestasFicha((actuales) => Object.fromEntries(Object.entries(actuales).filter(([id]) => !idsOpciones.has(id))))
+      return
+    }
+    setIdsFichasSeleccionadas((actuales) => [...actuales, idFicha])
+    const respuestas = { ...respuestasFicha }
+    ficha.detalles.forEach((detalle) => detalle.campos.forEach((campo) => campo.opciones.forEach((opcion) => {
+      respuestas[opcion.id] = { idOpcion: opcion.id, valor: null, seleccionada: opcion.tipo === 'SELECCION' ? false : null }
+    })))
+    setRespuestasFicha(respuestas)
+  }
+
+  const eliminar = async (seleccionado) => {
+    if (!window.confirm(`¿Eliminar al paciente “${seleccionado.apellido}, ${seleccionado.nombre}”?`)) return
+    setCargando(true); setMensaje(null)
+    try {
+      await apiPacientes.eliminar(idProfesional, seleccionado.id)
+      await cargar()
+      setMensaje({ tipo: 'exito', texto: 'Paciente eliminado correctamente.' })
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  return (
+    <main className="contenido pagina-fichas pagina-pacientes">
+      <button className="volver" onClick={modo === 'vista-paciente' ? () => setModo('consultar') : modo ? volverAlMenu : onVolver}>← {modo === 'vista-paciente' ? 'Volver a pacientes consultados' : modo ? 'Volver a opciones' : 'Volver al inicio'}</button>
+      <div className="cabecera-pagina">
+        <div><p className="sobrelinea">Gestión clínica</p><h1>Pacientes</h1><p>Administrá los pacientes asociados a cada profesional.</p></div>
+        <label className="profesional">ID del profesional<input type="number" min="1" required value={idProfesional} onChange={(e) => { setIdProfesional(e.target.value); setFichasDisponibles([]); setIdsFichasSeleccionadas([]); setRespuestasFicha({}) }} />{modo === 'consultar' && <button type="button" onClick={cargar}>Consultar</button>}</label>
+      </div>
+      {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
+      {!modo && <section className="opciones-ficha">
+        <button className="opcion-ficha principal" onClick={abrirRegistro}>
+          <span className="paso">01</span><span className="simbolo-opcion">＋</span>
+          <span><strong>Registrar nuevo paciente</strong><small>Cargá sus datos personales y de contacto.</small></span><b>Comenzar →</b>
+        </button>
+        <button className="opcion-ficha" onClick={abrirConsulta}>
+          <span className="paso">02</span><span className="simbolo-opcion">⌕</span>
+          <span><strong>Consultar mis pacientes</strong><small>Revisá, editá o eliminá los pacientes registrados.</small></span><b>Consultar →</b>
+        </button>
+      </section>}
+      {(modo === 'crear' || modo === 'editar') && <div className="contenedor-editor contenedor-paciente">
+        <form className="panel editor editor-paciente" onSubmit={guardar}>
+          <div className="encabezado-panel">
+            <div><h2>{editando ? 'Editar paciente' : 'Nuevo paciente'}</h2><p>{editando ? 'Actualizá sus datos personales.' : 'Completá sus datos personales.'}</p></div>
+            {editando && <button type="button" className="boton-secundario" onClick={volverAlMenu}>Cancelar</button>}
+          </div>
+          <div className="grilla-formulario">
+            <label>Nombre<input required maxLength="100" value={paciente.nombre} onChange={(e) => setPaciente({ ...paciente, nombre: e.target.value })} /></label>
+            <label>Apellido<input required maxLength="100" value={paciente.apellido} onChange={(e) => setPaciente({ ...paciente, apellido: e.target.value })} /></label>
+            <label>DNI<input required inputMode="numeric" pattern="[0-9]{6,12}" maxLength="12" value={paciente.dni} onChange={(e) => setPaciente({ ...paciente, dni: e.target.value.replace(/\D/g, '') })} /></label>
+            <label>Teléfono <span>(opcional)</span><input type="tel" maxLength="30" value={paciente.telefono} onChange={(e) => setPaciente({ ...paciente, telefono: e.target.value })} /></label>
+            <label>Fecha de nacimiento<input required type="date" max={new Date().toISOString().slice(0, 10)} value={paciente.fechaNacimiento} onChange={(e) => setPaciente({ ...paciente, fechaNacimiento: e.target.value })} /></label>
+            <label>Sexo<select required value={paciente.sexo} onChange={(e) => setPaciente({ ...paciente, sexo: e.target.value })}>
+              <option value="">Seleccionar</option><option value="FEMENINO">Femenino</option><option value="MASCULINO">Masculino</option><option value="OTRO">Otro</option><option value="NO_ESPECIFICA">Prefiere no especificar</option>
+            </select></label>
+          </div>
+          {!editando && <AsignacionFicha fichas={fichasDisponibles} cargando={cargandoFichas}
+            idsSeleccionadas={idsFichasSeleccionadas} respuestas={respuestasFicha}
+            onSeleccionar={seleccionarFicha} setRespuestas={setRespuestasFicha}
+            onActualizar={cargarFichasDisponibles} />}
+          <button className="boton-principal" disabled={cargando || !idProfesional}>{cargando ? 'Guardando…' : editando ? 'Guardar cambios' : 'Crear paciente'}</button>
+        </form>
+      </div>}
+      {modo === 'consultar' && <section className="panel listado listado-completo listado-pacientes">
+          <div className="encabezado-panel"><div><h2>Pacientes registrados</h2><p>{pacientes.length} pacientes</p></div><button className="boton-secundario" onClick={cargar} disabled={cargando}>Actualizar</button></div>
+          {pacientes.length > 0 && <label className="buscador-pacientes"><span>Buscar por apellido - nombre</span><input type="search" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Ej. Pérez - Ana" /></label>}
+          {cargando && !pacientes.length ? <p className="estado-vacio">Cargando pacientes…</p> : pacientes.length === 0 ? <p className="estado-vacio">Este profesional todavía no tiene pacientes.</p> : pacientesFiltrados.length === 0 ? <p className="estado-vacio">No se encontraron pacientes para “{busqueda}”.</p> : pacientesFiltrados.map((item) => (
+            <article className="ficha-lista paciente-lista" key={item.id}>
+              <span className="numero-ficha">{item.nombre.charAt(0)}{item.apellido.charAt(0)}</span>
+              <div><h3>{item.apellido}, {item.nombre}</h3><p>DNI {item.dni}{item.telefono ? ` · ${item.telefono}` : ''}</p><small>Nacimiento: {new Date(`${item.fechaNacimiento}T00:00:00`).toLocaleDateString('es-AR')} · {item.fichas?.length || 0} fichas médicas</small></div>
+              <div className="acciones"><button type="button" className="vista" onClick={() => verPaciente(item)}>Ver todos los datos</button><button type="button" onClick={() => editar(item)}>Editar</button><button type="button" className="peligro" onClick={() => eliminar(item)}>Eliminar</button></div>
+            </article>
+          ))}
+      </section>}
+      {modo === 'vista-paciente' && pacienteSeleccionado && <VistaCompletaPaciente paciente={pacienteSeleccionado} onEditar={() => editar(pacienteSeleccionado)} />}
+    </main>
+  )
+}
+
+function VistaCompletaPaciente({ paciente, onEditar }) {
+  const sexo = { FEMENINO: 'Femenino', MASCULINO: 'Masculino', OTRO: 'Otro', NO_ESPECIFICA: 'Prefiere no especificar' }
+  const fecha = (valor) => valor ? new Date(valor.includes('T') ? valor : `${valor}T00:00:00`).toLocaleString('es-AR', valor.includes('T') ? {} : { dateStyle: 'long' }) : 'No informado'
+
+  return <section className="vista-completa-paciente">
+    <header className="panel cabecera-paciente-completo">
+      <div><p className="sobrelinea">Paciente #{paciente.id}</p><h2>{paciente.apellido}, {paciente.nombre}</h2><p>DNI {paciente.dni}</p></div>
+      <button type="button" className="boton-principal boton-editar-paciente" onClick={onEditar}>Editar datos personales</button>
+    </header>
+    <section className="panel datos-paciente-completo">
+      <div className="encabezado-panel"><div><h2>Datos personales</h2><p>Información registrada del paciente.</p></div></div>
+      <dl className="grilla-datos-paciente">
+        <div><dt>Nombre</dt><dd>{paciente.nombre}</dd></div><div><dt>Apellido</dt><dd>{paciente.apellido}</dd></div>
+        <div><dt>DNI</dt><dd>{paciente.dni}</dd></div><div><dt>Teléfono</dt><dd>{paciente.telefono || 'No informado'}</dd></div>
+        <div><dt>Fecha de nacimiento</dt><dd>{fecha(paciente.fechaNacimiento)}</dd></div><div><dt>Sexo</dt><dd>{sexo[paciente.sexo] || paciente.sexo}</dd></div>
+        <div><dt>Fecha de registro</dt><dd>{fecha(paciente.fechaCreacion)}</dd></div><div><dt>Última actualización</dt><dd>{fecha(paciente.fechaActualizacion)}</dd></div>
+      </dl>
+    </section>
+    <section className="fichas-paciente-completo">
+      <div className="titulo-fichas-paciente"><div><p className="sobrelinea">Información clínica</p><h2>Fichas médicas cargadas</h2></div><span>{paciente.fichas?.length || 0} fichas</span></div>
+      {!paciente.fichas?.length ? <div className="panel estado-vacio">Este paciente no tiene fichas médicas asignadas.</div> : paciente.fichas.map((ficha) => <FichaPacienteCompleta ficha={ficha} key={ficha.id} />)}
+    </section>
+  </section>
+}
+
+function FichaPacienteCompleta({ ficha }) {
+  const secciones = ficha.respuestas.reduce((resultado, respuesta) => {
+    const seccion = respuesta.tituloDetalle || 'Sección'
+    const campo = respuesta.tituloCampo || 'Campo'
+    resultado[seccion] ||= {}
+    resultado[seccion][campo] ||= []
+    resultado[seccion][campo].push(respuesta)
+    return resultado
+  }, {})
+  return <article className="panel vista-previa-ficha ficha-paciente-completa">
+    <header className="cabecera-vista"><div><p className="sobrelinea">Ficha del paciente · solo lectura</p><h3>{ficha.nombreFicha}</h3><p>Asignada el {new Date(ficha.fechaAsignacion).toLocaleString('es-AR')}</p></div><div className="acciones-vista"><span>{Object.keys(secciones).length} secciones</span></div></header>
+    <div className="cuerpo-vista">{Object.entries(secciones).map(([seccion, campos], indiceSeccion) => <article className="fila-seccion" key={seccion}>
+      <div className="nombre-seccion"><span>{String(indiceSeccion + 1).padStart(2, '0')}</span><div><h3>{seccion}</h3></div></div>
+      <div className="campos-compactos">{Object.entries(campos).map(([campo, respuestas]) => <div className="campo-previo" key={campo}>
+        <div className="titulo-campo-previo"><strong>{campo}</strong></div>
+        <div className="respuestas-previas">{respuestas.map((respuesta) => <RespuestaPacienteVista respuesta={respuesta} key={respuesta.id} />)}</div>
+      </div>)}</div>
+    </article>)}</div>
+  </article>
+}
+
+function RespuestaPacienteVista({ respuesta }) {
+  if (respuesta.tipo === 'SI_NO') return <span className="respuesta-si-no respuesta-clinica-si-no">
+    <label><input type="checkbox" checked={respuesta.valor === 'SI'} disabled /> Sí</label>
+    <label><input type="checkbox" checked={respuesta.valor === 'NO'} disabled /> No</label>
+  </span>
+  if (respuesta.tipo === 'ENTRADA') return <span className="respuesta-entrada respuesta-entrada-cargada">
+    {respuesta.tituloOpcion && <b>{respuesta.tituloOpcion}</b>}<i>{respuesta.valor || 'No aplica'}</i>
+  </span>
+  return <label className={`respuesta-seleccion respuesta-seleccion-casilla ${respuesta.seleccionada ? 'marcada' : ''}`}>
+    <input type="checkbox" checked={Boolean(respuesta.seleccionada)} disabled /><span>{respuesta.tituloOpcion}</span>
+  </label>
+}
+
+function AsignacionFicha({ fichas, cargando, idsSeleccionadas, respuestas, onSeleccionar, setRespuestas, onActualizar }) {
+  const seleccionadas = fichas.filter((item) => idsSeleccionadas.includes(String(item.id)))
+
+  const responder = (opcion, campo, cambios) => {
+    const siguientes = { ...respuestas, [opcion.id]: { ...respuestas[opcion.id], ...cambios } }
+    if (opcion.tipo === 'SELECCION' && cambios.seleccionada) {
+      campo.opciones.filter((otra) => otra.tipo === 'SELECCION' && otra.id !== opcion.id
+        && (!campo.permiteSeleccionMultiple || (opcion.grupoExclusion && otra.grupoExclusion === opcion.grupoExclusion)))
+        .forEach((otra) => { siguientes[otra.id] = { ...siguientes[otra.id], seleccionada: false } })
+    }
+    setRespuestas(siguientes)
+  }
+
+  return <section className="asignacion-ficha">
+    <div className="encabezado-asignacion">
+      <div><h3>Asignar ficha médica <span>(opcional)</span></h3><p>Seleccioná una plantilla del profesional y completá sus campos.</p></div>
+      <button type="button" className="boton-secundario" onClick={onActualizar} disabled={cargando}>{cargando ? 'Cargando…' : 'Actualizar fichas'}</button>
+    </div>
+    <div className="selector-fichas">{fichas.map((item) => <label key={item.id}>
+      <input type="checkbox" checked={idsSeleccionadas.includes(String(item.id))} onChange={(e) => onSeleccionar(String(item.id), e.target.checked)} disabled={cargando} />
+      <span><strong>{item.nombre}</strong><small>{item.descripcion || `${item.detalles.length} secciones`}</small></span>
+    </label>)}</div>
+    {!cargando && fichas.length === 0 && <p className="aviso-ficha">Este profesional todavía no tiene fichas médicas disponibles.</p>}
+    {seleccionadas.map((ficha) => <div className="ficha-para-completar" key={ficha.id}>
+      <div className="titulo-ficha-asignada"><strong>{ficha.nombre}</strong>{ficha.descripcion && <small>{ficha.descripcion}</small>}</div>
+      {ficha.detalles.map((detalle) => <section className="detalle-respuesta" key={detalle.id}>
+        <h4>{detalle.titulo}</h4>{detalle.descripcion && <p>{detalle.descripcion}</p>}
+        {detalle.campos.map((campo) => <fieldset className="campo-respuesta" key={campo.id}>
+          <legend>{campo.titulo}{campo.permiteSeleccionMultiple && <small> · selección múltiple</small>}</legend>
+          {campo.descripcion && <p>{campo.descripcion}</p>}
+          <div className="opciones-respuesta">{campo.opciones.map((opcion) => {
+            if (opcion.tipo === 'ENTRADA') return <label className="entrada-respuesta" key={opcion.id}>{opcion.titulo || 'Respuesta'}<input maxLength="1000" placeholder="Si queda vacío se guardará No aplica" value={respuestas[opcion.id]?.valor || ''} onChange={(e) => responder(opcion, campo, { valor: e.target.value })} /></label>
+            if (opcion.tipo === 'SI_NO') return <div className="si-no-respuesta" key={opcion.id}><span>{opcion.titulo || campo.titulo}</span><label><input required type="radio" name={`opcion-${opcion.id}`} checked={respuestas[opcion.id]?.valor === 'SI'} onChange={() => responder(opcion, campo, { valor: 'SI' })} /> Sí</label><label><input required type="radio" name={`opcion-${opcion.id}`} checked={respuestas[opcion.id]?.valor === 'NO'} onChange={() => responder(opcion, campo, { valor: 'NO' })} /> No</label></div>
+            return <label className="seleccion-respuesta" key={opcion.id}><input type={campo.permiteSeleccionMultiple ? 'checkbox' : 'radio'} name={`campo-${campo.id}`} checked={Boolean(respuestas[opcion.id]?.seleccionada)} onChange={(e) => responder(opcion, campo, { seleccionada: e.target.checked })} /> {opcion.titulo}</label>
+          })}</div>
+        </fieldset>)}
+      </section>)}
+    </div>)}
+  </section>
 }
 
 function VistaPreviaFicha({ ficha, onEditar }) {
