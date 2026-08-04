@@ -1,0 +1,16 @@
+.respuesta-seleccion-casilla {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.respuesta-seleccion-casilla input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #176b57;
+}
+
+.respuesta-seleccion-casilla input:disabled {
+  opacity: 1;
+}

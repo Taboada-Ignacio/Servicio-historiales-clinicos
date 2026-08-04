@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: clinical-history-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/clinical_history}
+    username: ${DB_USER:clinical_history}
+    password: ${DB_PASSWORD:change_me}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
