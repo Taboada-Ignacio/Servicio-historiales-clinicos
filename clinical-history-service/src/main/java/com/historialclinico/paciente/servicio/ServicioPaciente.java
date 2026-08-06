@@ -7,6 +7,7 @@ import com.historialclinico.paciente.dto.SolicitudPaciente;
 import com.historialclinico.paciente.modelo.Paciente;
 import com.historialclinico.paciente.modelo.FichaPaciente;
 import com.historialclinico.paciente.modelo.RespuestaCampo;
+import com.historialclinico.paciente.modelo.OrigenFichaPaciente;
 import com.historialclinico.paciente.repositorio.RepositorioPaciente;
 import com.historialclinico.fichamedica.modelo.CampoParaLlenar;
 import com.historialclinico.fichamedica.modelo.FichaMedica;
@@ -68,7 +69,39 @@ public class ServicioPaciente {
         validarDniDisponible(idProfesional, dni, idPaciente);
         paciente.actualizar(normalizarRequerido(solicitud.nombre()), normalizarRequerido(solicitud.apellido()),
                 dni, normalizarOpcional(solicitud.telefono()), solicitud.fechaNacimiento(), solicitud.sexo());
+        if (solicitud.fichas() != null) actualizarFichasAsignadas(paciente, solicitud.fichas());
         return convertir(repositorio.save(paciente));
+    }
+
+    private void actualizarFichasAsignadas(Paciente paciente,
+            List<SolicitudPaciente.SolicitudFichaPaciente> solicitudes) {
+        Map<Long, FichaPaciente> existentes = paciente.getFichasAsignadas().stream()
+                .filter(ficha -> ficha.getOrigen() == OrigenFichaPaciente.DIRECTA)
+                .collect(Collectors.toMap(FichaPaciente::getId, Function.identity()));
+        Set<Long> idsRecibidos = solicitudes.stream().map(SolicitudPaciente.SolicitudFichaPaciente::idFichaPaciente)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
+        long cantidadExistentesRecibidas = solicitudes.stream().filter(s -> s.idFichaPaciente() != null).count();
+        if (idsRecibidos.size() != cantidadExistentesRecibidas || !existentes.keySet().containsAll(idsRecibidos))
+            throw new ExcepcionReglaNegocio("Una de las fichas informadas no pertenece al paciente o está repetida");
+
+        paciente.getFichasAsignadas().removeIf(ficha -> ficha.getOrigen() == OrigenFichaPaciente.DIRECTA
+                && !idsRecibidos.contains(ficha.getId()));
+        solicitudes.stream().filter(s -> s.idFichaPaciente() != null).forEach(solicitud -> {
+            FichaPaciente fichaPaciente = existentes.get(solicitud.idFichaPaciente());
+            if (!fichaPaciente.getFichaMedica().getId().equals(solicitud.idFichaMedica()))
+                throw new ExcepcionReglaNegocio("La ficha médica informada no corresponde a la ficha del paciente");
+            Map<Long, SolicitudPaciente.SolicitudRespuesta> respuestas = mapearYValidarRespuestas(
+                    fichaPaciente.getFichaMedica(), solicitud.respuestas());
+            fichaPaciente.getRespuestas().forEach(respuesta -> {
+                var nueva = respuestas.get(respuesta.getOpcion().getId());
+                String valor = respuesta.getOpcion().getTipo() == TipoOpcion.ENTRADA
+                        && (nueva.valor() == null || nueva.valor().isBlank()) ? "No aplica" : normalizarOpcional(nueva.valor());
+                respuesta.actualizar(valor, nueva.seleccionada());
+            });
+        });
+        solicitudes.stream().filter(s -> s.idFichaPaciente() == null)
+                .forEach(solicitud -> paciente.asignarFicha(construirFichaAsignada(paciente.getIdProfesional(), solicitud)));
     }
 
     @Transactional
@@ -101,7 +134,27 @@ public class ServicioPaciente {
     private FichaPaciente construirFichaAsignada(Long idProfesional, SolicitudPaciente.SolicitudFichaPaciente solicitud) {
         FichaMedica ficha = repositorioFichas.buscarPorIdYProfesional(solicitud.idFichaMedica(), idProfesional)
                 .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Ficha médica no encontrada"));
-        Map<Long, SolicitudPaciente.SolicitudRespuesta> respuestas = solicitud.respuestas().stream()
+        Map<Long, SolicitudPaciente.SolicitudRespuesta> respuestas = mapearYValidarRespuestas(ficha, solicitud.respuestas());
+        List<OpcionCampo> opciones = ficha.getDetalles().stream()
+                .flatMap(detalle -> detalle.getCampos().stream())
+                .flatMap(campo -> campo.getOpciones().stream())
+                .toList();
+
+        FichaPaciente fichaPaciente = new FichaPaciente(ficha);
+        opciones.forEach(opcion -> {
+            var respuesta = respuestas.get(opcion.getId());
+            String valor = opcion.getTipo() == TipoOpcion.ENTRADA
+                    && (respuesta.valor() == null || respuesta.valor().isBlank())
+                    ? "No aplica"
+                    : normalizarOpcional(respuesta.valor());
+            fichaPaciente.agregarRespuesta(new RespuestaCampo(opcion, valor, respuesta.seleccionada()));
+        });
+        return fichaPaciente;
+    }
+
+    private Map<Long, SolicitudPaciente.SolicitudRespuesta> mapearYValidarRespuestas(FichaMedica ficha,
+            List<SolicitudPaciente.SolicitudRespuesta> solicitudes) {
+        Map<Long, SolicitudPaciente.SolicitudRespuesta> respuestas = solicitudes.stream()
                 .collect(Collectors.toMap(SolicitudPaciente.SolicitudRespuesta::idOpcion, Function.identity(),
                         (primera, repetida) -> { throw new ExcepcionReglaNegocio("No se puede responder dos veces la misma opción"); }));
         List<OpcionCampo> opciones = ficha.getDetalles().stream()
@@ -114,17 +167,7 @@ public class ServicioPaciente {
         }
         ficha.getDetalles().stream().flatMap(detalle -> detalle.getCampos().stream())
                 .forEach(campo -> validarCampo(campo, respuestas));
-
-        FichaPaciente fichaPaciente = new FichaPaciente(ficha);
-        opciones.forEach(opcion -> {
-            var respuesta = respuestas.get(opcion.getId());
-            String valor = opcion.getTipo() == TipoOpcion.ENTRADA
-                    && (respuesta.valor() == null || respuesta.valor().isBlank())
-                    ? "No aplica"
-                    : normalizarOpcional(respuesta.valor());
-            fichaPaciente.agregarRespuesta(new RespuestaCampo(opcion, valor, respuesta.seleccionada()));
-        });
-        return fichaPaciente;
+        return respuestas;
     }
 
     private void validarCampo(CampoParaLlenar campo, Map<Long, SolicitudPaciente.SolicitudRespuesta> respuestas) {
@@ -158,7 +201,9 @@ public class ServicioPaciente {
         return new RespuestaPaciente(paciente.getId(), paciente.getIdProfesional(), paciente.getNombre(),
                 paciente.getApellido(), paciente.getDni(), paciente.getTelefono(), paciente.getFechaNacimiento(),
                 paciente.getSexo(), paciente.getFechaCreacion(), paciente.getFechaActualizacion(), paciente.getVersion(),
-                paciente.getFichasAsignadas().stream().map(ficha -> new RespuestaPaciente.RespuestaFichaPaciente(
+                paciente.getFichasAsignadas().stream()
+                        .filter(ficha -> ficha.getOrigen() == OrigenFichaPaciente.DIRECTA)
+                        .map(ficha -> new RespuestaPaciente.RespuestaFichaPaciente(
                         ficha.getId(), ficha.getFichaMedica().getId(), ficha.getFichaMedica().getNombre(),
                         ficha.getFechaAsignacion(), ficha.getRespuestas().stream().map(respuesta ->
                                 new RespuestaPaciente.RespuestaFicha(respuesta.getId(), respuesta.getOpcion().getId(),

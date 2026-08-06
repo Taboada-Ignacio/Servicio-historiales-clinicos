@@ -41,6 +41,11 @@ public class RespuestaCampo {
 
     void asociarA(FichaPaciente fichaPaciente) { this.fichaPaciente = fichaPaciente; }
 
+    public void actualizar(String valor, Boolean seleccionada) {
+        this.valor = valor;
+        this.seleccionada = seleccionada;
+    }
+
     public Long getId() { return id; }
     public OpcionCampo getOpcion() { return opcion; }
     public String getValor() { return valor; }

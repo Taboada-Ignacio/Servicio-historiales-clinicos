@@ -83,6 +83,11 @@ El frontend incluye actualmente:
 - Eliminación de plantillas con confirmación.
 - Visualización de errores devueltos por el backend.
 - Diseño adaptable a escritorio y dispositivos móviles.
+- Vista clínica compacta y adaptable tanto para previsualizar plantillas como para consultar las fichas completadas de un paciente.
+- El formulario para completar fichas durante el registro de un paciente utiliza la misma distribución clínica adaptable, conservando controles interactivos.
+- Al editar un paciente se muestran todas sus fichas asignadas y se pueden actualizar sus respuestas junto con los datos personales.
+- El editor de plantillas presenta la creación y modificación como una hoja clínica, con encabezado, secciones y campos configurables.
+- El teléfono del paciente es opcional; cuando se informa, solo admite dígitos tanto al registrar como al editar.
 
 Durante el desarrollo, Vite redirige las solicitudes `/api` hacia `http://localhost:8080`. Esto permite probar el microservicio directamente hasta incorporar el API Gateway.
 
@@ -142,6 +147,42 @@ Registra una síntesis clínica asociada al historial.
 | `id_epicrisis` | entero |
 | `fecha_hora` | fecha y hora |
 | `observaciones` | texto |
+| `id_ficha_seguimiento` | entero opcional; referencia a una plantilla del profesional |
+| `id_ficha_paciente_seguimiento` | entero opcional; referencia a la instancia completada para el paciente |
+
+La implementación relaciona directamente cada epicrisis con un paciente. La fecha y hora se generan automáticamente al registrar y se almacenan en UTC.
+
+#### Flujo de registro
+
+1. El profesional abre el módulo `Epicrisis` e ingresa apellido o nombre desde la pantalla inicial.
+2. El sistema lista todos los pacientes del profesional que coinciden con la búsqueda.
+3. El profesional selecciona un único paciente y confirma la selección.
+4. El sistema abre la pantalla de registro, mostrando apellido, nombre y DNI.
+5. Desde esa pantalla se pueden consultar todos los datos del paciente y sus fichas médicas, regresando después al registro.
+6. Opcionalmente, presiona `Agregar ficha de seguimiento`, selecciona una ficha médica del profesional en la ventana emergente y confirma con `Agregar`.
+7. La ficha seleccionada aparece completa en la pantalla y el profesional carga los datos del paciente en sus campos.
+8. El profesional escribe las observaciones clínicas, con un máximo de 1000 caracteres.
+9. Presiona `Registrar epicrisis` y confirma explícitamente el guardado.
+10. Solo después de confirmar se envía el registro al backend.
+11. Cuando el registro finaliza correctamente, el sistema muestra una pantalla de éxito con la opción `Volver al panel principal`.
+
+#### API de epicrisis
+
+| Método | Ruta | Operación |
+|---|---|---|
+| `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/epicrisis` | Registrar una epicrisis |
+| `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/epicrisis` | Listar las epicrisis del paciente |
+
+Reglas aplicadas:
+
+- El paciente debe pertenecer al profesional indicado en la ruta.
+- Las observaciones son obligatorias y no pueden superar 1000 caracteres.
+- La fecha y hora del registro son generadas por el backend.
+- La ficha de seguimiento es opcional; si se informa, debe ser una ficha médica perteneciente al mismo profesional.
+- Si se selecciona una ficha, deben enviarse todas sus respuestas. El backend valida campos `SI/NO`, selección simple, selección múltiple y grupos excluyentes.
+- La ficha completada queda incorporada a las fichas del paciente y vinculada a la epicrisis que originó el seguimiento.
+- Una epicrisis puede asociar como máximo una ficha médica de seguimiento.
+- Un paciente puede tener cero o más epicrisis.
 
 ### FichaMedica
 
@@ -189,9 +230,18 @@ Define una alternativa seleccionable o un dato que se completa por teclado. Cada
 
 El `grupo_exclusion` permite indicar que varias opciones son disyuntivas. Si el profesional selecciona una opción del grupo, las demás quedan desmarcadas.
 
+Las opciones de tipo `SELECCION` se presentan como casillas también cuando el campo admite una sola selección. Al marcar una opción se desmarcan las demás según las reglas del campo, y al volver a pulsar la misma opción se puede dejar el campo sin selección.
+
 ### FichaPaciente
 
 Representa la asignación de una plantilla de ficha médica al historial clínico de un paciente. Su existencia separa la definición reutilizable de la información clínica efectivamente completada.
+
+Cada instancia registra su origen:
+
+- `DIRECTA`: ficha asociada desde el alta o la edición del paciente. Se muestra al consultar y editar sus datos.
+- `EPICRISIS`: ficha completada como seguimiento de una epicrisis. Se conserva para el contexto de la epicrisis y no se muestra en la consulta general del paciente.
+
+La consulta general de pacientes tampoco incorpora la lista de epicrisis. El módulo de pacientes devuelve únicamente datos personales y fichas de origen `DIRECTA`.
 
 ### RespuestaCampo
 
@@ -215,6 +265,16 @@ Conserva la respuesta correspondiente a una `OpcionCampo` dentro de una `FichaPa
 3. El profesional completa o selecciona las opciones correspondientes.
 4. Las respuestas se guardan en la ficha del paciente y no modifican la plantilla.
 5. Una misma plantilla puede utilizarse con muchos pacientes, manteniendo respuestas independientes.
+
+### Edición de respuestas del paciente
+
+1. Al editar al paciente, el sistema identifica cada `FichaPaciente` por su propio ID y recupera la plantilla que define sus campos.
+2. Se muestran los valores previamente guardados y se permite modificarlos con los mismos controles usados durante la carga inicial.
+3. El profesional puede agregar una nueva instancia desde las plantillas disponibles, editar las fichas existentes o eliminar una ficha asociada.
+4. Cada ficha existente se identifica mediante `idFichaPaciente`; las fichas nuevas omiten ese identificador y se crean durante la actualización.
+5. El backend vuelve a validar campos `SI/NO`, selección simple, selección múltiple y grupos excluyentes.
+6. Las altas, modificaciones, eliminaciones y los datos personales se actualizan dentro de una única transacción.
+7. Si se elimina una ficha que nació como seguimiento de una epicrisis, la epicrisis se conserva y se libera únicamente la referencia a la instancia completada.
 
 ### Ejemplo
 

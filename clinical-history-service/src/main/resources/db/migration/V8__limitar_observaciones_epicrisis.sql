@@ -1,0 +1,1 @@
+ALTER TABLE epicrisis ALTER COLUMN observaciones SET DATA TYPE VARCHAR(1000);

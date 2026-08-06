@@ -89,6 +89,38 @@ class ControladorPacienteIntegrationTest {
     }
 
     @Test
+    void permiteTelefonoVacioYRechazaLetrasEnTelefono() throws Exception {
+        mockMvc.perform(post("/api/v1/profesionales/31/pacientes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nombre": "María",
+                                  "apellido": "Suárez",
+                                  "dni": "33123456",
+                                  "telefono": "",
+                                  "fechaNacimiento": "1990-05-20",
+                                  "sexo": "FEMENINO"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.telefono").doesNotExist());
+
+        mockMvc.perform(post("/api/v1/profesionales/31/pacientes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "nombre": "Laura",
+                                  "apellido": "Suárez",
+                                  "dni": "34123456",
+                                  "telefono": "11ABC123",
+                                  "fechaNacimiento": "1990-05-20",
+                                  "sexo": "FEMENINO"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void registraPacienteConVariasFichasYRespuestasEnUnaTransaccion() throws Exception {
         FichaCreada primera = crearFicha(40, "Admisión", "Motivo de consulta");
         FichaCreada segunda = crearFicha(40, "Antecedentes", "Alergias");
@@ -118,6 +150,50 @@ class ControladorPacienteIntegrationTest {
                 .andExpect(jsonPath("$.fichas[0].respuestas[0].tituloCampo").value("Motivo de consulta"))
                 .andExpect(jsonPath("$.fichas[0].respuestas[0].valor").value("Control inicial"))
                 .andExpect(jsonPath("$.fichas[1].respuestas[0].valor").value("No aplica"));
+    }
+
+    @Test
+    void actualizaDatosPersonalesYRespuestasDeLasFichas() throws Exception {
+        FichaCreada ficha = crearFicha(41, "Control", "Evolución");
+        String creado = mockMvc.perform(post("/api/v1/profesionales/41/pacientes")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nombre":"Sofía","apellido":"Díaz","dni":"32111999",
+                                 "fechaNacimiento":"1992-07-14","sexo":"FEMENINO","fichas":[
+                                   {"idFichaMedica":%d,"respuestas":[{"idOpcion":%d,"valor":"Inicial"}]}
+                                 ]}
+                                """.formatted(ficha.idFicha(), ficha.idOpcion())))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long idPaciente = ((Number) JsonPath.read(creado, "$.id")).longValue();
+        long idFichaPaciente = ((Number) JsonPath.read(creado, "$.fichas[0].id")).longValue();
+
+        mockMvc.perform(put("/api/v1/profesionales/41/pacientes/{idPaciente}", idPaciente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nombre":"Sofía Elena","apellido":"Díaz","dni":"32111999",
+                                 "fechaNacimiento":"1992-07-14","sexo":"FEMENINO","fichas":[
+                                   {"idFichaPaciente":%d,"idFichaMedica":%d,
+                                    "respuestas":[{"idOpcion":%d,"valor":"Evolución favorable"}]}
+                                 ]}
+                                """.formatted(idFichaPaciente, ficha.idFicha(), ficha.idOpcion())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nombre").value("Sofía Elena"))
+                .andExpect(jsonPath("$.fichas[0].respuestas[0].valor").value("Evolución favorable"));
+
+        FichaCreada nuevaFicha = crearFicha(41, "Antecedentes", "Observación");
+        mockMvc.perform(put("/api/v1/profesionales/41/pacientes/{idPaciente}", idPaciente)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"nombre":"Sofía Elena","apellido":"Díaz","dni":"32111999",
+                                 "fechaNacimiento":"1992-07-14","sexo":"FEMENINO","fichas":[
+                                   {"idFichaMedica":%d,
+                                    "respuestas":[{"idOpcion":%d,"valor":"Nueva ficha"}]}
+                                 ]}
+                                """.formatted(nuevaFicha.idFicha(), nuevaFicha.idOpcion())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fichas", hasSize(1)))
+                .andExpect(jsonPath("$.fichas[0].idFichaMedica").value(nuevaFicha.idFicha()))
+                .andExpect(jsonPath("$.fichas[0].respuestas[0].valor").value("Nueva ficha"));
     }
 
     private FichaCreada crearFicha(long idProfesional, String nombre, String tituloOpcion) throws Exception {
@@ -151,7 +227,7 @@ class ControladorPacienteIntegrationTest {
                   "nombre": "%s",
                   "apellido": "%s",
                   "dni": "%s",
-                  "telefono": "+54 11 5555-1234",
+                  "telefono": "541155551234",
                   "fechaNacimiento": "1990-05-20",
                   "sexo": "FEMENINO"
                 }

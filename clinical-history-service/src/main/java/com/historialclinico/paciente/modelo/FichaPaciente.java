@@ -4,6 +4,8 @@ import com.historialclinico.fichamedica.modelo.FichaMedica;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -35,13 +37,22 @@ public class FichaPaciente {
     @Column(name = "fecha_asignacion", nullable = false, updatable = false)
     private Instant fechaAsignacion;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private OrigenFichaPaciente origen;
+
     @OneToMany(mappedBy = "fichaPaciente", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RespuestaCampo> respuestas = new ArrayList<>();
 
     protected FichaPaciente() {}
 
     public FichaPaciente(FichaMedica fichaMedica) {
+        this(fichaMedica, OrigenFichaPaciente.DIRECTA);
+    }
+
+    public FichaPaciente(FichaMedica fichaMedica, OrigenFichaPaciente origen) {
         this.fichaMedica = fichaMedica;
+        this.origen = origen;
         this.fechaAsignacion = Instant.now();
     }
 
@@ -55,5 +66,6 @@ public class FichaPaciente {
     public Long getId() { return id; }
     public FichaMedica getFichaMedica() { return fichaMedica; }
     public Instant getFechaAsignacion() { return fechaAsignacion; }
+    public OrigenFichaPaciente getOrigen() { return origen; }
     public List<RespuestaCampo> getRespuestas() { return respuestas; }
 }

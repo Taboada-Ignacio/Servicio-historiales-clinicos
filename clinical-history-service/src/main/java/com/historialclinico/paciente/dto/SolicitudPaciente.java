@@ -17,12 +17,13 @@ public record SolicitudPaciente(
         @NotBlank @Size(max = 100) String nombre,
         @NotBlank @Size(max = 100) String apellido,
         @NotBlank @Pattern(regexp = "\\d{6,12}", message = "debe contener entre 6 y 12 dígitos") String dni,
-        @Size(max = 30) String telefono,
+        @Size(max = 30) @Pattern(regexp = "\\d*", message = "solo puede contener números") String telefono,
         @NotNull @Past LocalDate fechaNacimiento,
         @NotNull Sexo sexo,
         List<@Valid SolicitudFichaPaciente> fichas
 ) {
     public record SolicitudFichaPaciente(
+            @Positive Long idFichaPaciente,
             @NotNull @Positive Long idFichaMedica,
             @NotEmpty List<@Valid SolicitudRespuesta> respuestas
     ) {}

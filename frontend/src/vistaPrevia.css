@@ -1,16 +1,558 @@
+.ficha-hoja {
+  max-width: 1180px;
+  background: #fffefd;
+  border: 1px solid #dde6e2;
+  box-shadow: 0 18px 55px rgba(39, 67, 58, 0.1);
+}
+
+.ficha-hoja .cabecera-vista {
+  padding: 34px 38px 30px;
+  background: #fffefd;
+  border-bottom: 3px solid #d9e8e1;
+}
+
+.ficha-hoja .cabecera-vista h2 {
+  color: #294b42;
+  font-size: clamp(30px, 4vw, 48px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.ficha-hoja .cuerpo-vista {
+  padding: 26px 38px 42px;
+}
+
+.seccion-formulario {
+  display: block;
+  padding: 0 0 30px;
+  border: 0;
+}
+
+.seccion-formulario + .seccion-formulario {
+  margin-top: 8px;
+}
+
+.cabecera-seccion-formulario {
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #edf5f1;
+}
+
+.cabecera-seccion-formulario > span {
+  padding: 0;
+  color: #6b9a8a;
+}
+
+.cabecera-seccion-formulario h3 {
+  color: #31554b;
+  font-size: 16px;
+  letter-spacing: 0.01em;
+}
+
+.cabecera-seccion-formulario p {
+  margin-top: 3px;
+  font-size: 10px;
+}
+
+.rejilla-formulario {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 22px 24px;
+  align-items: start;
+}
+
+.campo-formulario {
+  grid-column: span 4;
+  min-width: 0;
+}
+
+.campo-formulario--linea {
+  grid-column: span 6;
+}
+
+.campo-formulario--grupo {
+  grid-column: span 6;
+}
+
+.campo-formulario--binario {
+  grid-column: span 4;
+}
+
+.campo-formulario .titulo-campo-previo {
+  min-height: 22px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #51635e;
+}
+
+.campo-formulario .titulo-campo-previo strong {
+  color: #40534e;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.campo-formulario > p {
+  margin: 5px 0 0;
+  color: #87938f;
+  font-size: 9px;
+}
+
+.campo-formulario .respuestas-previas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 9px;
+}
+
+.campo-formulario .respuesta-seleccion,
+.campo-formulario .respuesta-si-no {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #53635e;
+  font-size: 11px;
+}
+
 .respuesta-seleccion-casilla {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
 }
 
-.respuesta-seleccion-casilla input {
-  width: 13px;
-  height: 13px;
+.campo-formulario .respuesta-seleccion input,
+.campo-formulario .respuesta-si-no input {
+  width: 16px;
+  height: 16px;
   margin: 0;
   accent-color: #176b57;
 }
 
-.respuesta-seleccion-casilla input:disabled {
+.campo-formulario .respuesta-seleccion input:disabled,
+.campo-formulario .respuesta-si-no input:disabled {
   opacity: 1;
+}
+
+.campo-formulario .respuesta-entrada {
+  min-height: 30px;
+  font-size: 11px;
+}
+
+.campo-formulario .respuesta-entrada i {
+  border-bottom-color: #677872;
+}
+
+.ficha-paciente-completa.ficha-hoja {
+  max-width: none;
+  margin-top: 0;
+}
+
+.ficha-paciente-completa.ficha-hoja .cabecera-vista {
+  padding: 25px 30px 22px;
+  background: #fffefd;
+}
+
+.ficha-paciente-completa.ficha-hoja .cabecera-vista h3 {
+  margin: 5px 0 4px;
+  color: #294b42;
+  font-size: 27px;
+  font-weight: 500;
+}
+
+.ficha-paciente-completa .respuesta-seleccion.marcada {
+  color: #176b57;
+  font-weight: 700;
+}
+
+.ficha-paciente-completa .respuesta-clinica-si-no {
+  background: transparent;
+}
+
+.ficha-paciente-completa .respuesta-entrada-cargada {
+  align-items: flex-end;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ficha-paciente-completa .respuesta-entrada-cargada i {
+  border: 0;
+  border-bottom: 1px solid #677872;
+  padding: 0 4px 3px;
+  color: #31574d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ficha-carga-hoja {
+  overflow: hidden;
+  border: 1px solid #dce7e2;
+  border-radius: 14px;
+  background: #fffefd;
+  box-shadow: 0 12px 32px rgba(39, 67, 58, 0.07);
+}
+
+.ficha-carga-hoja .titulo-ficha-asignada {
+  padding: 22px 25px;
+  border-bottom: 3px solid #d9e8e1;
+  background: #fffefd;
+}
+
+.ficha-carga-hoja .titulo-ficha-asignada strong {
+  color: #294b42;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.seccion-carga-formulario {
+  padding: 22px 25px 28px;
+  border: 0;
+}
+
+.seccion-carga-formulario + .seccion-carga-formulario {
+  padding-top: 0;
+}
+
+.seccion-carga-formulario .cabecera-seccion-formulario {
+  display: flex;
+}
+
+.seccion-carga-formulario .cabecera-seccion-formulario h4 {
+  margin: 0;
+  color: #31554b;
+  font-size: 15px;
+}
+
+.seccion-carga-formulario .cabecera-seccion-formulario p {
+  margin: 3px 0 0;
+  color: #7f908a;
+}
+
+.rejilla-carga-formulario .campo-respuesta {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.rejilla-carga-formulario .campo-respuesta legend {
+  width: 100%;
+  min-height: 24px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid #51635e;
+  color: #40534e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.rejilla-carga-formulario .campo-respuesta > p {
+  margin: 5px 0 0;
+  color: #87938f;
+  font-size: 9px;
+}
+
+.rejilla-carga-formulario .opciones-respuesta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 16px;
+  margin-top: 10px;
+}
+
+.rejilla-carga-formulario .seleccion-respuesta,
+.rejilla-carga-formulario .si-no-respuesta label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #53635e;
+  font-size: 11px;
+}
+
+.rejilla-carga-formulario .seleccion-respuesta input,
+.rejilla-carga-formulario .si-no-respuesta input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #176b57;
+}
+
+.rejilla-carga-formulario .si-no-respuesta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rejilla-carga-formulario .si-no-respuesta > span {
+  display: none;
+}
+
+.rejilla-carga-formulario .entrada-respuesta {
+  flex: 1 1 100%;
+  color: #5f706a;
+  font-size: 10px;
+}
+
+.rejilla-carga-formulario .entrada-respuesta input {
+  width: 100%;
+  margin-top: 5px;
+  padding: 6px 2px;
+  border: 0;
+  border-bottom: 1px solid #677872;
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+}
+
+.rejilla-carga-formulario .entrada-respuesta input:focus {
+  border-bottom-color: #176b57;
+  box-shadow: 0 2px 0 rgba(23, 107, 87, 0.12);
+}
+
+.ficha-editor-hoja {
+  width: 100%;
+  max-width: none;
+  padding: 0 38px 38px;
+  overflow: hidden;
+  border: 1px solid #dce6e2;
+  border-radius: 16px;
+  background: #fffefd;
+  box-shadow: 0 18px 55px rgba(39, 67, 58, 0.1);
+}
+
+.ficha-editor-hoja .cabecera-editor-hoja {
+  margin: 0 -38px 28px;
+  padding: 32px 38px 27px;
+  border-bottom: 3px solid #d9e8e1;
+  background: #fffefd;
+}
+
+.ficha-editor-hoja .cabecera-editor-hoja h2 {
+  margin: 5px 0;
+  color: #294b42;
+  font-size: clamp(28px, 4vw, 43px);
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.ficha-editor-hoja > label {
+  display: block;
+  margin-bottom: 20px;
+  color: #52665f;
+  font-size: 11px;
+}
+
+.ficha-editor-hoja > label > input,
+.ficha-editor-hoja > label > textarea {
+  width: 100%;
+  margin-top: 7px;
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 1px solid #60716b;
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+}
+
+.ficha-editor-hoja > label:first-of-type > input {
+  color: #31554b;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ficha-editor-hoja > label > textarea {
+  min-height: 54px;
+  resize: vertical;
+}
+
+.ficha-editor-hoja > label > input:focus,
+.ficha-editor-hoja > label > textarea:focus {
+  border-bottom-color: #176b57;
+  box-shadow: 0 2px 0 rgba(23, 107, 87, 0.12);
+}
+
+.ficha-editor-hoja .detalle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 30px 0 0;
+  padding: 18px 20px 22px;
+  border: 0;
+  border-radius: 12px;
+  background: #f1f6f3;
+}
+
+.ficha-editor-hoja .detalle > .fila-titulo,
+.ficha-editor-hoja .detalle > input,
+.ficha-editor-hoja .detalle > .agregar {
+  grid-column: 1 / -1;
+}
+
+.ficha-editor-hoja .detalle > .fila-titulo {
+  margin: -18px -20px 2px;
+  padding: 12px 16px;
+  border-radius: 12px 12px 0 0;
+  background: #dfece6;
+}
+
+.ficha-editor-hoja .detalle > .fila-titulo > span {
+  color: #31554b;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.ficha-editor-hoja .detalle > input {
+  padding: 8px 3px;
+  border: 0;
+  border-bottom: 1px solid #81938c;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ficha-editor-hoja .detalle > input:first-of-type {
+  color: #31554b;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ficha-editor-hoja .campo {
+  grid-column: auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid #d8e3de;
+  border-radius: 10px;
+  background: #fffefd;
+}
+
+.ficha-editor-hoja .campo > input {
+  border-color: #d0dcd7;
+  background: #fbfcfb;
+}
+
+.ficha-editor-hoja .campo .opcion {
+  grid-template-columns: minmax(110px, 1fr) minmax(105px, .48fr) minmax(110px, .8fr) 32px;
+}
+
+.ficha-editor-hoja .campo .opcion > input,
+.ficha-editor-hoja .campo .opcion > select,
+.ficha-editor-hoja .campo .opcion > .sin-grupo,
+.ficha-editor-hoja .campo .opcion > .vista-si-no {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ficha-editor-hoja .agregar-seccion {
+  margin-top: 20px;
+}
+
+.ficha-editor-hoja > .boton-principal {
+  margin-top: 22px;
+}
+
+.contenedor-editor:has(.ficha-editor-hoja) {
+  position: relative;
+  left: 50%;
+  width: 75vw;
+  max-width: none;
+  transform: translateX(-50%);
+}
+
+.pagina-fichas:has(.ficha-editor-hoja) > .cabecera-pagina,
+.pagina-fichas:has(.ficha-editor-hoja) > .volver,
+.pagina-fichas:has(.ficha-editor-hoja) > .mensaje {
+  width: 75vw;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.pagina-fichas:has(.ficha-editor-hoja) {
+  width: min(2000px, calc(100% - 20px));
+  max-width: none;
+}
+
+@media (max-width: 1000px) {
+  .contenedor-editor:has(.ficha-editor-hoja) {
+    width: calc(100vw - 24px);
+  }
+
+  .pagina-fichas:has(.ficha-editor-hoja) > .cabecera-pagina,
+  .pagina-fichas:has(.ficha-editor-hoja) > .volver,
+  .pagina-fichas:has(.ficha-editor-hoja) > .mensaje {
+    width: calc(100vw - 24px);
+  }
+
+  .ficha-editor-hoja .detalle {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .ficha-hoja .cabecera-vista,
+  .ficha-hoja .cuerpo-vista {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .campo-formulario,
+  .campo-formulario--binario,
+  .campo-formulario--grupo {
+    grid-column: span 6;
+  }
+
+  .campo-formulario--linea {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 600px) {
+  .ficha-hoja .cabecera-vista,
+  .ficha-hoja .cuerpo-vista {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .rejilla-formulario {
+    gap: 20px;
+  }
+
+  .campo-formulario,
+  .campo-formulario--binario,
+  .campo-formulario--grupo,
+  .campo-formulario--linea {
+    grid-column: span 12;
+  }
+
+  .seccion-carga-formulario {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .ficha-editor-hoja {
+    padding: 0 18px 24px;
+  }
+
+  .ficha-editor-hoja .cabecera-editor-hoja {
+    margin-right: -18px;
+    margin-left: -18px;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .ficha-editor-hoja .detalle {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .ficha-editor-hoja .detalle > .fila-titulo {
+    margin-right: -14px;
+    margin-left: -14px;
+  }
 }

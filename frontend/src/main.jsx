@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import './styles.css'
 import './vistaPrevia.css'
+import './epicrisis.css'
+import './edicionPaciente.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
