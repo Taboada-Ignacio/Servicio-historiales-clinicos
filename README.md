@@ -6,7 +6,7 @@ Sistema para administrar pacientes y sus historias clínicas. El alcance funcion
 
 ## Estado del proyecto
 
-El microservicio y el frontend ya cuentan con el primer módulo funcional: CRUD de plantillas de ficha médica. Eureka y Gateway todavía no fueron generados.
+El microservicio y el frontend cuentan con módulos funcionales de plantillas de ficha médica, pacientes, epicrisis y tratamientos. Se encuentran implementados el alta de tratamientos, la carga opcional de su primera sesión y la continuación de tratamientos pendientes. Eureka y Gateway todavía no fueron generados.
 
 ## Arquitectura prevista
 
@@ -77,6 +77,9 @@ El frontend incluye actualmente:
 
 - Página principal con acceso a los módulos previstos.
 - Módulo de fichas médicas habilitado.
+- Módulo de pacientes habilitado, con alta, consulta, edición, eliminación y asignación de fichas.
+- Módulo de epicrisis habilitado, con ficha de seguimiento opcional.
+- Módulo de tratamientos habilitado, con alta, primera sesión opcional y continuación de tratamientos pendientes.
 - Selección temporal del profesional mediante su identificador.
 - Listado de plantillas del profesional.
 - Creación y edición de detalles, campos y opciones anidadas.
@@ -91,9 +94,9 @@ El frontend incluye actualmente:
 
 Durante el desarrollo, Vite redirige las solicitudes `/api` hacia `http://localhost:8080`. Esto permite probar el microservicio directamente hasta incorporar el API Gateway.
 
-## Modelo de dominio propuesto
+## Modelo de dominio
 
-El modelo inicial fue aportado mediante un diagrama y queda sujeto a refinamiento durante la implementación.
+El modelo inicial fue aportado mediante un diagrama y se refinó durante la implementación. Las secciones siguientes distinguen las decisiones ya implementadas de las que continúan pendientes.
 
 ```mermaid
 erDiagram
@@ -109,7 +112,9 @@ erDiagram
     FICHA_MEDICA ||--o{ FICHA_PACIENTE : instancia
     FICHA_PACIENTE ||--o{ RESPUESTA_CAMPO : registra
     OPCION_CAMPO ||--o{ RESPUESTA_CAMPO : responde
-    TRATAMIENTO ||--|{ DETALLE_TRATAMIENTO : registra
+    TRATAMIENTO ||--o{ SESION_TRATAMIENTO : registra
+    SESION_TRATAMIENTO }o--o| FICHA_MEDICA : utiliza
+    SESION_TRATAMIENTO }o--o| FICHA_PACIENTE : completa
 ```
 
 ### Paciente
@@ -122,21 +127,14 @@ Representa a la persona cuya información clínica administra el sistema.
 | `id_profesional` | entero; referencia externa |
 | `nombre` | texto |
 | `apellido` | texto |
-| `email` | texto |
 | `dni` | texto |
 | `telefono` | texto |
 | `fechaNacimiento` | fecha |
 | `sexo` | texto |
 
-### HistorialClinico
+### Historial clínico
 
-Agrupa toda la información clínica perteneciente a un paciente.
-
-| Campo | Tipo propuesto |
-|---|---|
-| `id_historialClinico` | entero |
-| `id_paciente` | entero |
-| `campos_a_llenar` | pendiente de definición |
+Es el agregado conceptual de la información clínica perteneciente a un paciente. Actualmente no se persiste como una tabla o entidad separada: fichas completadas, epicrisis y tratamientos se relacionan directamente con `Paciente`.
 
 ### Epicrisis
 
@@ -186,7 +184,7 @@ Reglas aplicadas:
 
 ### FichaMedica
 
-Representa una **plantilla configurable** creada por un profesional. Un profesional debe tener entre una y cinco fichas médicas. Una misma plantilla puede asignarse a distintos pacientes sin compartir entre ellos las respuestas cargadas.
+Representa una **plantilla configurable** creada por un profesional. Un profesional puede tener entre cero y cinco fichas médicas. Una misma plantilla puede asignarse a distintos pacientes sin compartir entre ellos las respuestas cargadas.
 
 | Campo | Tipo propuesto |
 |---|---|
@@ -240,6 +238,7 @@ Cada instancia registra su origen:
 
 - `DIRECTA`: ficha asociada desde el alta o la edición del paciente. Se muestra al consultar y editar sus datos.
 - `EPICRISIS`: ficha completada como seguimiento de una epicrisis. Se conserva para el contexto de la epicrisis y no se muestra en la consulta general del paciente.
+- `TRATAMIENTO`: ficha completada dentro de una sesión de tratamiento. Se conserva vinculada a esa sesión y no se muestra en la consulta general del paciente.
 
 La consulta general de pacientes tampoco incorpora la lista de epicrisis. El módulo de pacientes devuelve únicamente datos personales y fichas de origen `DIRECTA`.
 
@@ -256,7 +255,7 @@ Conserva la respuesta correspondiente a una `OpcionCampo` dentro de una `FichaPa
 3. Dentro de cada sección agrega uno o más `CampoParaLlenar`.
 4. Dentro de cada campo agrega obligatoriamente una o más `OpcionCampo`.
 5. Las opciones se ordenan para determinar cómo se mostrarán en el frontend.
-6. El profesional puede crear como mínimo una y como máximo cinco plantillas de ficha médica.
+6. El profesional puede no tener plantillas y crear como máximo cinco fichas médicas.
 
 ### Asignación y carga
 
@@ -290,7 +289,7 @@ Las opciones `Sí` y `No` pertenecen al mismo grupo de exclusión, por lo que so
 
 ### Reglas de negocio confirmadas
 
-- Cada profesional tiene entre una y cinco plantillas de ficha médica.
+- Cada profesional puede tener entre cero y cinco plantillas de ficha médica.
 - Cada plantilla pertenece a un único profesional.
 - Cada plantilla contiene uno o más detalles.
 - Cada detalle contiene uno o más campos para llenar.
@@ -302,26 +301,52 @@ Las opciones `Sí` y `No` pertenecen al mismo grupo de exclusión, por lo que so
 
 ### Tratamiento
 
-Registra un tratamiento asociado al historial clínico.
+Registra un plan clínico perteneciente directamente a un paciente. La implementación utiliza la entidad `Tratamiento` y persiste tanto la cantidad total como la cantidad de sesiones faltantes.
 
-| Campo | Tipo propuesto |
-|---|---|
-| `id_tratamiento` | entero |
-| `nombre` | texto |
-| `descripcion` | texto |
-| `cantidadDeSesionesTotal` | entero |
-| `cantidadDeSesionesFaltantes` | entero |
+| Campo | Tipo implementado | Regla |
+|---|---|---|
+| `id` | entero largo | Identificador generado |
+| `id_paciente` | entero largo | Paciente propietario |
+| `nombre` | texto de hasta 150 caracteres | Obligatorio |
+| `descripcion` | texto de hasta 1000 caracteres | Opcional |
+| `cantidad_sesiones_total` | entero | Entre 1 y 1000 |
+| `cantidad_sesiones_faltantes` | entero | Entre cero y el total |
+| `fecha_creacion` | fecha y hora UTC | Generada automáticamente |
 
-### DetalleTratamiento
+`cantidad_sesiones_faltantes` se inicializa con el total y se decrementa atómicamente al registrar cada sesión. Si el alta incluye la primera sesión, el tratamiento nace con una sesión menos pendiente. Cuando llega a cero, se considera terminado y deja de aparecer en el listado de tratamientos pendientes.
 
-Registra las sesiones o avances de un tratamiento.
+### SesionTratamiento
 
-| Campo | Tipo propuesto |
-|---|---|
-| `id_tratamiento` | entero |
-| `nroSesion` | entero |
-| `observaciones` | texto |
-| `fechaHora` | fecha y hora |
+Representa cada atención, avance o sesión registrada dentro de un tratamiento. Sustituye el nombre conceptual inicial `DetalleTratamiento` por un nombre que refleja mejor su función.
+
+| Campo | Tipo implementado | Regla |
+|---|---|---|
+| `id` | entero largo | Identificador generado |
+| `id_tratamiento` | entero largo | Tratamiento propietario |
+| `nro_sesion` | entero | Correlativo, comienza en 1 y es único dentro del tratamiento |
+| `observaciones` | texto de hasta 1000 caracteres | Obligatorio |
+| `fecha_hora` | fecha y hora UTC | Generada automáticamente |
+| `id_ficha_seguimiento` | entero largo | Plantilla médica opcional |
+| `id_ficha_paciente_seguimiento` | entero largo | Instancia completada opcional |
+
+Cada sesión puede utilizar como máximo una plantilla de ficha médica perteneciente al mismo profesional. Cuando se selecciona una plantilla, se crea una `FichaPaciente` de origen `TRATAMIENTO`, se guardan todas sus respuestas y se vincula la instancia completada a la sesión. La ficha se persiste antes que la sesión para garantizar la integridad referencial también al continuar un tratamiento ya existente.
+
+### Flujo funcional de tratamientos
+
+1. El profesional abre `Tratamientos`, busca al paciente por apellido o nombre, lo selecciona y confirma la selección.
+2. El sistema permite consultar los datos completos del paciente o elegir entre `Asignar nuevo tratamiento` y `Continuar un tratamiento`.
+3. Para un tratamiento nuevo se ingresan nombre, descripción opcional y cantidad total de sesiones.
+4. Opcionalmente se habilita `Cargar la primera sesión ahora`.
+5. Al cargar una sesión, primero se ofrece asociar una ficha médica. Si se selecciona, sus campos se completan en pantalla.
+6. Después de la ficha se ingresan las observaciones obligatorias de la sesión.
+7. El alta completa —tratamiento, primera sesión, ficha y respuestas— se ejecuta en una única transacción.
+8. Para continuar, el sistema consulta y muestra únicamente tratamientos con sesiones faltantes mayores que cero.
+9. Cada opción muestra el nombre, la cantidad de sesiones realizadas, el total y las pendientes.
+10. El profesional selecciona un tratamiento y presiona `Continuar tratamiento`.
+11. La pantalla indica el próximo número de sesión; primero permite cargar la ficha opcional y luego solicita las observaciones.
+12. `Cancelar registro` pide confirmación antes de descartar los datos. `Confirmar registro` también pide confirmación antes de enviar la sesión.
+13. El backend bloquea el tratamiento durante el registro para impedir que solicitudes simultáneas excedan el total planificado.
+14. Al completar la última sesión, el tratamiento queda terminado automáticamente.
 
 ## Relaciones interpretadas
 
@@ -329,27 +354,22 @@ Registra las sesiones o avances de un tratamiento.
 - Cada paciente pertenece a un profesional, identificado mediante `id_profesional`.
 - Un paciente posee un historial clínico.
 - Un historial clínico puede contener cero o más epicrisis.
-- Un profesional crea entre una y cinco plantillas de ficha médica.
+- Un profesional puede crear entre cero y cinco plantillas de ficha médica.
 - Un historial clínico puede recibir cero o más fichas basadas en esas plantillas.
 - Un historial clínico puede contener cero o más tratamientos.
 - Una plantilla de ficha médica contiene uno o más detalles.
 - Un detalle de ficha contiene uno o más campos para llenar.
 - Un campo para llenar contiene una o más opciones.
-- Un tratamiento contiene uno o más detalles o sesiones.
+- Un tratamiento contiene cero o más sesiones; puede crearse sin cargar la primera.
 
 ## Decisiones pendientes del dominio
 
 - Determinar si los identificadores serán enteros o UUID.
 - Definir el mecanismo futuro para validar `id_profesional`; por ahora se conservará en `Paciente` como referencia externa simple porque este sistema no administra profesionales.
-- Aclarar el propósito de `campos_a_llenar` en `HistorialClinico`.
-- Definir los identificadores de `DetalleFicha`, `CampoParaLlenar`, `OpcionCampo`, `FichaPaciente` y `RespuestaCampo`.
 - Precisar cómo se representarán los valores de entrada, inicialmente texto, y si se agregarán tipos como número o fecha.
 - Definir si una opción de entrada puede depender formalmente de otra opción, como `¿Cuántos por día?` respecto de `Sí`.
 - Definir qué ocurre con las fichas ya asignadas cuando el profesional modifica su plantilla.
-- Confirmar si una ficha médica se relaciona directamente con una epicrisis o únicamente con el historial clínico.
 - Definir reglas de edición, anulación y conservación de los registros clínicos.
-- Confirmar si `cantidadDeSesionesFaltantes` se persiste o se calcula a partir de las sesiones registradas.
-- Normalizar nombres al implementar: clases en singular, atributos Java en `camelCase` y columnas SQL en `snake_case`.
 
 ## Convenciones iniciales
 
@@ -358,8 +378,8 @@ Registra las sesiones o avances de un tratamiento.
 - Fechas y horas de backend almacenadas en UTC.
 - DTOs separados de las entidades de persistencia.
 - Migraciones de base de datos administradas con Flyway.
-- Ninguna eliminación física de información clínica hasta definir formalmente las reglas de conservación.
-- El frontend se comunicará con el API Gateway y no directamente con el microservicio.
+- El borrado de un paciente es actualmente físico y elimina en cascada sus fichas, epicrisis, tratamientos y sesiones. Antes de uso productivo debe definirse una política clínica de conservación o borrado lógico.
+- La arquitectura objetivo hará que el frontend se comunique con el API Gateway. Mientras Gateway no exista, Vite y el contenedor web redirigen `/api` directamente al microservicio.
 
 ### División de responsabilidades del backend
 
@@ -380,7 +400,7 @@ La autenticación todavía está fuera del alcance. Por eso los controladores re
 
 ## Índice de endpoints del servicio
 
-La URL local del microservicio es `http://localhost:8080`. Actualmente expone diez endpoints funcionales, agrupados en dos recursos:
+La URL local del microservicio es `http://localhost:8080`. Actualmente expone dieciséis endpoints funcionales, agrupados en cuatro recursos:
 
 | Recurso | Método | Ruta |
 |---|---|---|
@@ -394,6 +414,12 @@ La URL local del microservicio es `http://localhost:8080`. Actualmente expone di
 | Pacientes | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` |
 | Pacientes | `PUT` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` |
 | Pacientes | `DELETE` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}` |
+| Epicrisis | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/epicrisis` |
+| Epicrisis | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/epicrisis` |
+| Tratamientos | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos` |
+| Tratamientos | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos` |
+| Tratamientos | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos/sin-terminar` |
+| Tratamientos | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos/{idTratamiento}/sesiones` |
 
 Además, Spring Boot Actuator y Springdoc exponen endpoints operativos:
 
@@ -623,7 +649,7 @@ El cuerpo utilizado para crear y actualizar un paciente posee los siguientes cam
 | `nombre` | texto | Sí | No puede estar vacío; máximo 100 caracteres |
 | `apellido` | texto | Sí | No puede estar vacío; máximo 100 caracteres |
 | `dni` | texto | Sí | Entre 6 y 12 dígitos |
-| `telefono` | texto | No | Máximo 30 caracteres |
+| `telefono` | texto | No | Solo dígitos; máximo 30 caracteres |
 | `fechaNacimiento` | fecha ISO `YYYY-MM-DD` | Sí | Debe ser anterior a la fecha actual |
 | `sexo` | enumeración | Sí | `FEMENINO`, `MASCULINO`, `OTRO` o `NO_ESPECIFICA` |
 | `fichas` | arreglo | No | Cero, una o varias fichas médicas completas |
@@ -658,7 +684,7 @@ Content-Type: application/json
   "nombre": "Ana",
   "apellido": "Pérez",
   "dni": "30111222",
-  "telefono": "+54 11 5555-1234",
+  "telefono": "541155551234",
   "fechaNacimiento": "1990-05-20",
   "sexo": "FEMENINO",
   "fichas": [
@@ -684,7 +710,7 @@ Respuesta `201 Created`:
   "nombre": "Ana",
   "apellido": "Pérez",
   "dni": "30111222",
-  "telefono": "+54 11 5555-1234",
+  "telefono": "541155551234",
   "fechaNacimiento": "1990-05-20",
   "sexo": "FEMENINO",
   "fechaCreacion": "2026-08-04T18:30:00Z",
@@ -733,7 +759,7 @@ En la interfaz, el listado puede filtrarse por la combinación `apellido - nombr
     "nombre": "Ana",
     "apellido": "Pérez",
     "dni": "30111222",
-    "telefono": "+54 11 5555-1234",
+    "telefono": "541155551234",
     "fechaNacimiento": "1990-05-20",
     "sexo": "FEMENINO",
     "fechaCreacion": "2026-08-04T18:30:00Z",
@@ -759,14 +785,14 @@ PUT /api/v1/profesionales/10/pacientes/1
 Content-Type: application/json
 ```
 
-La actualización reemplaza todos los datos personales editables, por lo que deben enviarse nuevamente todos los campos obligatorios. Actualmente no agrega, reemplaza ni elimina las fichas ya asignadas al paciente.
+La actualización reemplaza todos los datos personales editables, por lo que deben enviarse nuevamente todos los campos obligatorios. También permite conservar y editar fichas existentes mediante `idFichaPaciente`, agregar nuevas fichas omitiendo ese identificador y eliminar asignaciones al excluirlas de la solicitud.
 
 ```json
 {
   "nombre": "Ana María",
   "apellido": "Pérez",
   "dni": "30111222",
-  "telefono": "+54 11 4444-5678",
+  "telefono": "541144445678",
   "fechaNacimiento": "1990-05-20",
   "sexo": "FEMENINO"
 }
@@ -780,7 +806,7 @@ Devuelve `200 OK` con el paciente actualizado.
 DELETE /api/v1/profesionales/10/pacientes/1
 ```
 
-Devuelve `204 No Content` sin cuerpo. Si el paciente no existe o pertenece a otro profesional, devuelve `404 Not Found`.
+Devuelve `204 No Content` sin cuerpo. Si el paciente no existe o pertenece a otro profesional, devuelve `404 Not Found`. El borrado actual es físico; por las claves foráneas y cascadas elimina también las fichas del paciente, sus epicrisis, tratamientos y sesiones.
 
 ### Errores y reglas de negocio
 
@@ -812,6 +838,202 @@ La entidad utiliza control de versión optimista y registra las fechas de creaci
 
 Swagger UI queda disponible en `http://localhost:8080/swagger-ui.html` cuando el microservicio está en ejecución.
 
+## API de tratamientos
+
+Todos los recursos de tratamiento se encuentran subordinados a un paciente y verifican que este pertenezca al profesional indicado.
+
+Ruta base:
+
+```text
+/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos
+```
+
+### Endpoints
+
+| Método | Ruta relativa | Operación | Respuesta exitosa |
+|---|---|---|---|
+| `POST` | `/` | Asignar un tratamiento, con primera sesión opcional | `201 Created` |
+| `GET` | `/` | Listar todos los tratamientos del paciente | `200 OK` |
+| `GET` | `/sin-terminar` | Listar solamente tratamientos con sesiones pendientes | `200 OK` |
+| `POST` | `/{idTratamiento}/sesiones` | Registrar la próxima sesión | `201 Created` |
+
+Los identificadores de profesional, paciente y tratamiento deben ser enteros positivos. Las respuestas `201 Created` incluyen una cabecera `Location` con la ubicación del recurso creado.
+
+### Asignar un tratamiento
+
+```http
+POST /api/v1/profesionales/10/pacientes/25/tratamientos
+Content-Type: application/json
+```
+
+Sin primera sesión:
+
+```json
+{
+  "nombre": "Rehabilitación de rodilla",
+  "descripcion": "Plan progresivo de movilidad y fuerza",
+  "cantidadSesionesTotal": 10,
+  "primeraSesion": null
+}
+```
+
+Con primera sesión y ficha médica:
+
+```json
+{
+  "nombre": "Rehabilitación de rodilla",
+  "descripcion": "Plan progresivo de movilidad y fuerza",
+  "cantidadSesionesTotal": 10,
+  "primeraSesion": {
+    "observaciones": "Evaluación inicial con buena tolerancia.",
+    "idFichaSeguimiento": 3,
+    "respuestasFichaSeguimiento": [
+      { "idOpcion": 15, "seleccionada": true },
+      { "idOpcion": 16, "seleccionada": false },
+      { "idOpcion": 17, "valor": "Dolor leve" },
+      { "idOpcion": 18, "valor": "SI" }
+    ]
+  }
+}
+```
+
+| Campo | Obligatorio | Validación |
+|---|---|---|
+| `nombre` | Sí | No vacío; máximo 150 caracteres |
+| `descripcion` | No | Máximo 1000 caracteres; blancos se convierten en `null` |
+| `cantidadSesionesTotal` | Sí | Entero entre 1 y 1000 |
+| `primeraSesion` | No | Objeto de sesión completo o `null` |
+| `primeraSesion.observaciones` | Si hay sesión | No vacío; máximo 1000 caracteres |
+| `primeraSesion.idFichaSeguimiento` | No | Entero positivo; plantilla del mismo profesional |
+| `primeraSesion.respuestasFichaSeguimiento` | Si hay ficha | Una respuesta válida por cada opción de la plantilla |
+
+El tratamiento sin primera sesión conserva inicialmente todas sus sesiones como faltantes. Si se incluye la primera, se registra como número `1` y la cantidad faltante se reduce en uno.
+
+### Respuesta de tratamiento
+
+Los endpoints devuelven el tratamiento completo con sus sesiones ordenadas por número ascendente:
+
+```json
+{
+  "id": 8,
+  "idPaciente": 25,
+  "nombre": "Rehabilitación de rodilla",
+  "descripcion": "Plan progresivo de movilidad y fuerza",
+  "cantidadSesionesTotal": 10,
+  "cantidadSesionesFaltantes": 9,
+  "fechaCreacion": "2026-08-06T21:00:00Z",
+  "sesiones": [
+    {
+      "id": 12,
+      "nroSesion": 1,
+      "observaciones": "Evaluación inicial con buena tolerancia.",
+      "fechaHora": "2026-08-06T21:00:00Z",
+      "idFichaSeguimiento": 3,
+      "nombreFichaSeguimiento": "Control de sesión"
+    }
+  ]
+}
+```
+
+La respuesta identifica la plantilla usada por la sesión, pero no expone las respuestas de la ficha completada dentro del tratamiento. Estas se conservan en `FichaPaciente` para el contexto clínico de la sesión.
+
+### Listar tratamientos
+
+```http
+GET /api/v1/profesionales/10/pacientes/25/tratamientos
+```
+
+Devuelve todos los tratamientos del paciente, terminados o no, ordenados desde el más reciente. Un paciente sin tratamientos devuelve `[]`.
+
+```http
+GET /api/v1/profesionales/10/pacientes/25/tratamientos/sin-terminar
+```
+
+Devuelve únicamente aquellos cuya `cantidadSesionesFaltantes` sea mayor que cero. El frontend calcula las realizadas como:
+
+```text
+sesiones realizadas = cantidadSesionesTotal - cantidadSesionesFaltantes
+```
+
+### Continuar un tratamiento
+
+```http
+POST /api/v1/profesionales/10/pacientes/25/tratamientos/8/sesiones
+Content-Type: application/json
+```
+
+Sin ficha:
+
+```json
+{
+  "observaciones": "Se trabajó movilidad activa y fortalecimiento.",
+  "idFichaSeguimiento": null,
+  "respuestasFichaSeguimiento": null
+}
+```
+
+Con ficha:
+
+```json
+{
+  "observaciones": "Se trabajó movilidad activa y fortalecimiento.",
+  "idFichaSeguimiento": 3,
+  "respuestasFichaSeguimiento": [
+    { "idOpcion": 15, "seleccionada": true },
+    { "idOpcion": 16, "seleccionada": false },
+    { "idOpcion": 17, "valor": "Evolución favorable" },
+    { "idOpcion": 18, "valor": "NO" }
+  ]
+}
+```
+
+El número de sesión no se recibe desde el cliente: el backend lo calcula a partir del total y las sesiones faltantes. La fecha y hora también se generan en el servidor. El tratamiento se obtiene con bloqueo pesimista de escritura durante el alta para serializar registros concurrentes.
+
+### Fichas médicas de sesión
+
+- La ficha es opcional tanto para la primera sesión como para sesiones posteriores.
+- La plantilla debe pertenecer al profesional de la ruta.
+- Si se informa `idFichaSeguimiento`, deben enviarse todas las opciones en `respuestasFichaSeguimiento`.
+- Se aplican las mismas validaciones de `ENTRADA`, `SELECCION`, `SI_NO`, selección múltiple y grupos excluyentes que en pacientes y epicrisis.
+- Una entrada vacía se guarda como `No aplica`.
+- La ficha completada se persiste con origen `TRATAMIENTO` antes de guardar la referencia desde la sesión.
+- El borrado futuro de una ficha completada no elimina la sesión: la clave foránea utiliza `ON DELETE SET NULL`.
+
+### Reglas y errores
+
+| Estado | Situación |
+|---|---|
+| `400 Bad Request` | Identificador no positivo, nombre u observaciones vacías, longitudes excedidas, total fuera del rango 1–1000 o respuestas de ficha inválidas por formato |
+| `404 Not Found` | El paciente, tratamiento o ficha no existe, o no pertenece al profesional/paciente indicado |
+| `409 Conflict` | El tratamiento ya no posee sesiones pendientes o la ficha viola una regla clínica de selección/respuestas |
+| `201 Created` | Tratamiento o sesión registrados correctamente |
+
+El alta se ejecuta dentro de una transacción. Si falla la ficha, sus respuestas o la sesión, no se descuenta una sesión ni se conserva un registro parcial.
+
+### Persistencia y migración
+
+La migración Flyway `V13__crear_tratamientos_y_sesiones.sql` incorpora:
+
+- Tabla `tratamientos`, vinculada a `pacientes` con eliminación en cascada.
+- Tabla `sesiones_tratamiento`, vinculada a su tratamiento con eliminación en cascada.
+- Restricciones para totales positivos, pendientes dentro del rango y números de sesión positivos.
+- Unicidad de `(id_tratamiento, nro_sesion)`.
+- Referencias opcionales a la plantilla y a la ficha completada.
+- Índices por paciente/fecha y por tratamiento/número de sesión.
+
+### Cobertura automatizada
+
+Las pruebas de integración verifican:
+
+- Alta de un tratamiento con y sin primera sesión.
+- Primera sesión con ficha médica.
+- Validaciones del tratamiento.
+- Listado exclusivo de tratamientos pendientes.
+- Registro correlativo de una sesión posterior.
+- Finalización y exclusión del listado de pendientes.
+- Rechazo de nuevas sesiones para un tratamiento terminado.
+- Continuación con ficha médica, persistencia previa de `FichaPaciente` y cierre efectivo de la transacción.
+
 ## Próximos pasos
 
 - [x] Crear la estructura inicial del repositorio.
@@ -825,7 +1047,7 @@ Swagger UI queda disponible en `http://localhost:8080/swagger-ui.html` cuando el
 - [x] Implementar la interfaz CRUD de fichas médicas.
 - [x] Incorporar PostgreSQL y Docker Compose.
 - [x] Contenerizar el microservicio y el frontend.
-- [ ] Implementar el primer flujo vertical del dominio.
+- [x] Implementar los flujos verticales de pacientes, epicrisis y tratamientos.
 
 ## Ejecución
 
