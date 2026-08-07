@@ -6,6 +6,7 @@ import './vistaPrevia.css'
 import './epicrisis.css'
 import './edicionPaciente.css'
 import './tratamientos.css'
+import './historiasClinicas.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

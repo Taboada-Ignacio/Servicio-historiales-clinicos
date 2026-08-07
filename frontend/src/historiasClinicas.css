@@ -1,0 +1,20 @@
+.pagina-historias { max-width: 1180px; }
+.cabecera-historia { margin-top: 28px; }
+.listado-historia { margin-top: 14px; padding: 22px 24px; }
+.encabezado-historia { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; }
+.encabezado-historia h2 { margin: 5px 0 0; color: #294b42; }
+.encabezado-historia > span { padding: 7px 11px; border-radius: 100px; background: #e4f1eb; color: #176b57; font-size: 11px; font-weight: 700; }
+.eventos-historia,.sesiones-del-tratamiento { display: grid; gap: 6px; margin-top: 16px; }
+.evento-historia { display: grid; grid-template-columns: 76px minmax(180px,1fr) minmax(180px,.8fr) auto; align-items: center; gap: 11px; min-height: 52px; padding: 9px 11px; border: 1px solid #d8e4df; border-radius: 9px; background: #fbfdfc; }
+.tipo-evento { min-width: 0; padding: 5px 7px; border-radius: 16px; background: #e5f1ec; color: #176b57; font-size: 9px; font-weight: 800; text-align: center; text-transform: uppercase; }
+.tipo-evento.sesion { background: #edf0f7; color: #52658c; }.tipo-evento.epicrisis { background: #f5eee1; color: #87652c; }
+.evento-historia strong,.evento-historia small { display: block; }.evento-historia strong { color: #315047; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.evento-historia small { margin: 0; color: #7c8b86; font-size: 10px; text-align: center; white-space: nowrap; }
+.evento-historia button { width: auto; margin: 0; padding: 7px 10px; font-size: 10px; white-space: nowrap; }
+.detalle-historia { display: grid; gap: 18px; margin-top: 28px; }
+.detalle-historia > section { padding: 28px 30px; }.detalle-historia h2 { margin: 5px 0; color: #294b42; }
+.detalle-historia .fecha-detalle { margin: 0; color: #71817c; }
+.datos-evento { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 18px; margin: 24px 0 0; }
+.datos-evento dt { color: #84918d; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }.datos-evento dd { margin: 5px 0 0; color: #294b42; font-weight: 700; overflow-wrap: anywhere; }
+.observacion-detalle { margin: 24px 0 0; padding: 18px; border-radius: 11px; background: #f5f9f7; color: #405b54; line-height: 1.6; white-space: pre-wrap; }
+.sesiones-del-tratamiento .evento-historia { background: white; }
+@media (max-width:700px) { .encabezado-historia { align-items: flex-start; flex-direction: column; }.listado-historia,.detalle-historia > section { padding: 22px 18px; }.evento-historia { grid-template-columns: 62px minmax(90px,1fr) minmax(105px,.8fr) auto; gap: 6px; padding-inline: 7px; }.evento-historia button { width: auto; padding-inline: 7px; }.datos-evento { grid-template-columns: 1fr; } }

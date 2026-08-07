@@ -7,7 +7,7 @@ import { apiTratamientos } from './api/tratamientos.js'
 const modulos = [
   { icono: 'FM', titulo: 'Fichas médicas', descripcion: 'Diseñá y administrá plantillas clínicas.', disponible: true },
   { icono: 'PA', titulo: 'Pacientes', descripcion: 'Información personal y datos de contacto.', disponible: true, destino: 'pacientes' },
-  { icono: 'HC', titulo: 'Historias clínicas', descripcion: 'Evoluciones y antecedentes por paciente.' },
+  { icono: 'HC', titulo: 'Historias clínicas', descripcion: 'Evoluciones y antecedentes por paciente.', disponible: true, destino: 'historias' },
   { icono: 'TR', titulo: 'Tratamientos', descripcion: 'Sesiones, avances y observaciones.', disponible: true, destino: 'tratamientos' },
   { icono: 'EP', titulo: 'Epicrisis', descripcion: 'Síntesis de episodios clínicos.', disponible: true, destino: 'epicrisis' },
 ]
@@ -21,6 +21,7 @@ const pacienteVacio = () => ({ nombre: '', apellido: '', dni: '', telefono: '', 
 const vistaDesdeRuta = () => {
   if (window.location.pathname.includes('fichas-medicas')) return 'fichas'
   if (window.location.pathname.includes('pacientes')) return 'pacientes'
+  if (window.location.pathname.includes('historias-clinicas')) return 'historias'
   if (window.location.pathname.includes('epicrisis')) return 'epicrisis'
   if (window.location.pathname.includes('tratamientos')) return 'tratamientos'
   return 'inicio'
@@ -30,7 +31,7 @@ export default function App() {
   const [vista, setVista] = useState(vistaDesdeRuta)
 
   const navegar = (destino) => {
-    const rutas = { fichas: '/fichas-medicas', pacientes: '/pacientes', epicrisis: '/epicrisis', tratamientos: '/tratamientos', inicio: '/' }
+    const rutas = { fichas: '/fichas-medicas', pacientes: '/pacientes', historias: '/historias-clinicas', epicrisis: '/epicrisis', tratamientos: '/tratamientos', inicio: '/' }
     const ruta = rutas[destino]
     window.history.pushState({}, '', ruta)
     setVista(destino)
@@ -54,10 +55,99 @@ export default function App() {
       {vista === 'inicio' && <Inicio onAbrirModulo={navegar} />}
       {vista === 'fichas' && <GestionFichas onVolver={() => navegar('inicio')} />}
       {vista === 'pacientes' && <GestionPacientes onVolver={() => navegar('inicio')} />}
+      {vista === 'historias' && <GestionHistoriasClinicas onVolver={() => navegar('inicio')} />}
       {vista === 'epicrisis' && <GestionEpicrisis onVolver={() => navegar('inicio')} />}
       {vista === 'tratamientos' && <GestionTratamientos onVolver={() => navegar('inicio')} />}
     </div>
   )
+}
+
+function GestionHistoriasClinicas({ onVolver }) {
+  const [pantalla, setPantalla] = useState('buscar')
+  const [idProfesional, setIdProfesional] = useState('1')
+  const [pacientes, setPacientes] = useState([])
+  const [busqueda, setBusqueda] = useState('')
+  const [seleccionado, setSeleccionado] = useState(null)
+  const [buscado, setBuscado] = useState(false)
+  const [eventos, setEventos] = useState([])
+  const [eventoSeleccionado, setEventoSeleccionado] = useState(null)
+  const [eventoDetalleAnterior, setEventoDetalleAnterior] = useState(null)
+  const [cargando, setCargando] = useState(false)
+  const [mensaje, setMensaje] = useState(null)
+
+  const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
+  const pacientesFiltrados = pacientes.filter((paciente) =>
+    normalizar(`${paciente.apellido} ${paciente.nombre}`).includes(normalizar(busqueda)))
+  const formatearFecha = (valor) => new Date(valor).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })
+
+  const buscarPacientes = async () => {
+    if (!idProfesional || !busqueda.trim()) return
+    setCargando(true); setMensaje(null); setSeleccionado(null)
+    try { setPacientes(await apiPacientes.listar(idProfesional)); setBuscado(true) }
+    catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const consultarHistoria = async () => {
+    if (!seleccionado) return
+    if (!window.confirm(`¿Confirmás que querés consultar la historia clínica de ${seleccionado.apellido}, ${seleccionado.nombre}?`)) return
+    setCargando(true); setMensaje(null)
+    try {
+      const [epicrisis, tratamientos] = await Promise.all([
+        apiEpicrisis.listar(idProfesional, seleccionado.id),
+        apiTratamientos.listar(idProfesional, seleccionado.id),
+      ])
+      const cronologia = [
+        ...epicrisis.map((item) => ({ tipo: 'epicrisis', fecha: item.fechaHora, nombre: 'Epicrisis', datos: item })),
+        ...tratamientos.map((item) => ({ tipo: 'tratamiento', fecha: item.fechaCreacion, nombre: item.nombre, datos: item })),
+        ...tratamientos.flatMap((tratamiento) => tratamiento.sesiones.map((sesion) => ({
+          tipo: 'sesion', fecha: sesion.fechaHora, nombre: `Sesión N.º ${sesion.nroSesion} · ${tratamiento.nombre}`,
+          datos: sesion, tratamiento,
+        }))),
+      ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+      setEventos(cronologia); setEventoSeleccionado(null); setPantalla('historia')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const abrirDetalle = (evento, anterior = null) => {
+    setEventoDetalleAnterior(anterior); setEventoSeleccionado(evento); setPantalla('detalle')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const volver = pantalla === 'buscar' ? onVolver : () => {
+    if (pantalla === 'detalle' && eventoDetalleAnterior) {
+      setEventoSeleccionado(eventoDetalleAnterior); setEventoDetalleAnterior(null)
+      return
+    }
+    setPantalla(pantalla === 'detalle' ? 'historia' : 'buscar')
+    if (pantalla === 'historia') { setEventos([]); setSeleccionado(null) }
+  }
+
+  return <main className="contenido pagina-historias">
+    <button className="volver" onClick={volver}>← {pantalla === 'buscar' ? 'Volver al inicio' : pantalla === 'detalle' && eventoDetalleAnterior ? 'Volver al tratamiento' : pantalla === 'detalle' ? 'Volver a la historia clínica' : 'Volver a buscar pacientes'}</button>
+    <div className="cabecera-pagina"><div><p className="sobrelinea">Registro clínico</p><h1>Historias clínicas</h1><p>{pantalla === 'buscar' ? 'Buscá y seleccioná al paciente.' : 'Consultá la actividad clínica ordenada cronológicamente.'}</p></div>{pantalla === 'buscar' && <label className="profesional">ID del profesional<input type="number" min="1" value={idProfesional} onChange={(e) => setIdProfesional(e.target.value)} /></label>}</div>
+    {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
+    {pantalla === 'buscar' && <section className="panel buscador-paciente-epicrisis"><div className="titulo-paso"><h2>Buscar paciente</h2><p>Ingresá apellido o nombre para buscar coincidencias.</p></div><div className="fila-busqueda-epicrisis"><label className="buscador-epicrisis">Apellido - nombre<input autoFocus type="search" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscarPacientes() } }} placeholder="Ej. Pérez - Ana" /></label><button className="boton-principal" onClick={buscarPacientes} disabled={cargando || !busqueda.trim()}>{cargando ? 'Buscando…' : 'Buscar'}</button></div><div className="resultados-pacientes-epicrisis">{!buscado ? <p>Los pacientes encontrados aparecerán aquí.</p> : !pacientesFiltrados.length ? <p>No se encontraron pacientes.</p> : pacientesFiltrados.map((paciente) => <label className={seleccionado?.id === paciente.id ? 'seleccionado' : ''} key={paciente.id}><input type="radio" name="paciente-historia" checked={seleccionado?.id === paciente.id} onChange={() => setSeleccionado(paciente)} /><span><strong>{paciente.apellido}, {paciente.nombre}</strong><small>DNI {paciente.dni}</small></span></label>)}</div><div className="confirmar-paciente-epicrisis"><span>{seleccionado ? `Seleccionado: ${seleccionado.apellido}, ${seleccionado.nombre}` : 'Seleccioná un paciente para continuar.'}</span><button className="boton-principal" disabled={!seleccionado || cargando} onClick={consultarHistoria}>{cargando ? 'Consultando…' : 'Consultar historia clínica'}</button></div></section>}
+    {pantalla === 'historia' && <><section className="panel identidad-paciente-epicrisis cabecera-historia"><div><p className="sobrelinea">Historia clínica de</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section><section className="panel listado-historia"><div className="encabezado-historia"><div><p className="sobrelinea">Cronología clínica</p><h2>Registros del paciente</h2></div><span>{eventos.length} registros</span></div><div className="eventos-historia">{!eventos.length ? <p className="estado-vacio">Este paciente todavía no tiene registros clínicos.</p> : eventos.map((evento) => <EventoHistoria evento={evento} formatearFecha={formatearFecha} onConsultar={() => abrirDetalle(evento)} key={`${evento.tipo}-${evento.datos.id}`} />)}</div></section></>}
+    {pantalla === 'detalle' && eventoSeleccionado && <DetalleHistoria evento={eventoSeleccionado} formatearFecha={formatearFecha} onConsultarSesion={(sesion) => abrirDetalle({ tipo: 'sesion', fecha: sesion.fechaHora, nombre: `Sesión N.º ${sesion.nroSesion} · ${eventoSeleccionado.datos.nombre}`, datos: sesion, tratamiento: eventoSeleccionado.datos }, eventoSeleccionado)} />}
+  </main>
+}
+
+function EventoHistoria({ evento, formatearFecha, onConsultar }) {
+  const etiquetas = { epicrisis: 'Epicrisis', tratamiento: 'Tratamiento', sesion: 'Sesión' }
+  return <article className="evento-historia"><span className={`tipo-evento ${evento.tipo}`}>{etiquetas[evento.tipo]}</span><strong>{evento.nombre}</strong><small>{formatearFecha(evento.fecha)}</small><button type="button" className="boton-secundario" onClick={onConsultar}>Consultar datos</button></article>
+}
+
+function DetalleHistoria({ evento, formatearFecha, onConsultarSesion }) {
+  const { datos } = evento
+  if (evento.tipo === 'tratamiento') {
+    const realizadas = datos.cantidadSesionesTotal - datos.cantidadSesionesFaltantes
+    return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle del tratamiento</p><h2>{datos.nombre}</h2><p className="fecha-detalle">Creado el {formatearFecha(datos.fechaCreacion)}</p><dl className="datos-evento"><div><dt>Sesiones totales</dt><dd>{datos.cantidadSesionesTotal}</dd></div><div><dt>Sesiones realizadas</dt><dd>{realizadas}</dd></div><div><dt>Sesiones pendientes</dt><dd>{datos.cantidadSesionesFaltantes}</dd></div></dl><div className="observacion-detalle"><strong>Descripción</strong><br />{datos.descripcion || 'Sin descripción'}</div></section><section className="panel"><div className="encabezado-historia"><div><p className="sobrelinea">Seguimiento</p><h2>Sesiones del tratamiento</h2></div><span>{datos.sesiones.length} sesiones</span></div><div className="sesiones-del-tratamiento">{!datos.sesiones.length ? <p className="estado-vacio">Este tratamiento todavía no tiene sesiones registradas.</p> : [...datos.sesiones].sort((a, b) => new Date(b.fechaHora) - new Date(a.fechaHora)).map((sesion) => <EventoHistoria key={sesion.id} evento={{ tipo: 'sesion', nombre: `Sesión N.º ${sesion.nroSesion}`, fecha: sesion.fechaHora, datos: sesion }} formatearFecha={formatearFecha} onConsultar={() => onConsultarSesion(sesion)} />)}</div></section></section>
+  }
+  const esEpicrisis = evento.tipo === 'epicrisis'
+  return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle de {esEpicrisis ? 'la epicrisis' : 'la sesión'}</p><h2>{esEpicrisis ? 'Epicrisis' : `Sesión N.º ${datos.nroSesion}`}</h2><p className="fecha-detalle">{formatearFecha(evento.fecha)}</p><dl className="datos-evento">{!esEpicrisis && <div><dt>Tratamiento</dt><dd>{evento.tratamiento.nombre}</dd></div>}<div><dt>Ficha médica</dt><dd>{datos.nombreFichaSeguimiento || 'Sin ficha médica'}</dd></div>{!esEpicrisis && <div><dt>Número de sesión</dt><dd>{datos.nroSesion}</dd></div>}</dl><div className="observacion-detalle"><strong>Observaciones</strong><br />{datos.observaciones || 'Sin observaciones'}</div></section></section>
 }
 
 function GestionTratamientos({ onVolver }) {
@@ -81,6 +171,7 @@ function GestionTratamientos({ onVolver }) {
   const [tratamientosActivos, setTratamientosActivos] = useState([])
   const [tratamientoSeleccionado, setTratamientoSeleccionado] = useState(null)
   const [tipoExito, setTipoExito] = useState('nuevo')
+  const [pantallaAnteriorDatos, setPantallaAnteriorDatos] = useState('decision')
 
   const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
   const filtrados = pacientes.filter((p) => normalizar(`${p.apellido} ${p.nombre}`).includes(normalizar(busqueda)))
@@ -128,13 +219,18 @@ function GestionTratamientos({ onVolver }) {
     setObservacionesSesion(''); setFichaSesion(null); setRespuestasFicha({}); setMensaje(null)
     setPantalla('seleccionar-tratamiento'); window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+  const consultarDatosPaciente = (origen) => {
+    setPantallaAnteriorDatos(origen)
+    setPantalla('datos')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   const registrarSesion = async (evento) => {
     evento.preventDefault()
     if (!window.confirm(`¿Confirmás el registro de la sesión N.º ${tratamientoSeleccionado.cantidadSesionesTotal - tratamientoSeleccionado.cantidadSesionesFaltantes + 1} de “${tratamientoSeleccionado.nombre}”?`)) return
     setCargando(true); setMensaje(null)
     try {
       await apiTratamientos.registrarSesion(idProfesional, seleccionado.id, tratamientoSeleccionado.id, {
-        observaciones: observacionesSesion, idFichaSeguimiento: fichaSesion?.id || null,
+        observaciones: observacionesSesion.trim() || 'Sin observaciones', idFichaSeguimiento: fichaSesion?.id || null,
         respuestasFichaSeguimiento: fichaSesion ? Object.values(respuestasFicha) : null,
       })
       setTipoExito('sesion'); setPantalla('exito'); window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -149,7 +245,7 @@ function GestionTratamientos({ onVolver }) {
       await apiTratamientos.crear(idProfesional, seleccionado.id, {
         nombre: tratamiento.nombre, descripcion: tratamiento.descripcion,
         cantidadSesionesTotal: Number(tratamiento.cantidadSesionesTotal),
-        primeraSesion: cargarPrimera ? { observaciones: observacionesSesion, idFichaSeguimiento: fichaSesion?.id || null,
+        primeraSesion: cargarPrimera ? { observaciones: observacionesSesion.trim() || 'Sin observaciones', idFichaSeguimiento: fichaSesion?.id || null,
           respuestasFichaSeguimiento: fichaSesion ? Object.values(respuestasFicha) : null } : null,
       })
       setTipoExito('nuevo'); setPantalla('exito'); window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -158,7 +254,7 @@ function GestionTratamientos({ onVolver }) {
   }
 
   if (pantalla === 'exito') return <main className="contenido pagina-fichas pagina-tratamientos"><section className="panel resultado-epicrisis-exitoso" role="status"><span className="icono-exito-epicrisis">✓</span><p className="sobrelinea">Registro completado</p><h1>{tipoExito === 'sesion' ? 'Sesión registrada con éxito' : 'Tratamiento asignado con éxito'}</h1><p>{tipoExito === 'sesion' ? `La nueva sesión de “${tratamientoSeleccionado.nombre}” fue guardada correctamente.` : `El tratamiento de ${seleccionado.apellido}, ${seleccionado.nombre} fue guardado correctamente.`}</p><button className="boton-principal" onClick={onVolver}>Volver al panel principal</button></section></main>
-  if (pantalla === 'datos') return <main className="contenido pagina-fichas pagina-tratamientos"><button className="volver" onClick={() => setPantalla(decision === 'continuar' ? 'seleccionar-tratamiento' : decision ? 'nuevo' : 'decision')}>← Volver a tratamientos</button><VistaCompletaPaciente paciente={seleccionado} /></main>
+  if (pantalla === 'datos') return <main className="contenido pagina-fichas pagina-tratamientos"><button className="volver" onClick={() => setPantalla(pantallaAnteriorDatos)}>← Volver a tratamientos</button><VistaCompletaPaciente paciente={seleccionado} /></main>
   const volver = pantalla === 'buscar' ? onVolver : () => {
     if (pantalla === 'nuevo' || pantalla === 'seleccionar-tratamiento') setPantalla('decision')
     else if (pantalla === 'continuar') setPantalla('seleccionar-tratamiento')
@@ -170,10 +266,10 @@ function GestionTratamientos({ onVolver }) {
     <div className="cabecera-pagina"><div><p className="sobrelinea">Registro clínico</p><h1>Tratamientos</h1><p>{pantalla === 'buscar' ? 'Buscá y seleccioná al paciente.' : 'Gestioná el tratamiento del paciente seleccionado.'}</p></div>{pantalla === 'buscar' && <label className="profesional">ID del profesional<input type="number" min="1" value={idProfesional} onChange={(e) => setIdProfesional(e.target.value)} /></label>}</div>
     {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
     {pantalla === 'buscar' && <section className="panel buscador-paciente-epicrisis"><div className="titulo-paso"><h2>Buscar paciente</h2><p>Ingresá apellido o nombre para buscar coincidencias.</p></div><div className="fila-busqueda-epicrisis"><label className="buscador-epicrisis">Apellido - nombre<input autoFocus type="search" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscar() } }} placeholder="Ej. Pérez - Ana" /></label><button className="boton-principal" onClick={buscar} disabled={cargando || !busqueda.trim()}>{cargando ? 'Buscando…' : 'Buscar'}</button></div><div className="resultados-pacientes-epicrisis">{!buscado ? <p>Los pacientes encontrados aparecerán aquí.</p> : !filtrados.length ? <p>No se encontraron pacientes.</p> : filtrados.map((p) => <label className={seleccionado?.id === p.id ? 'seleccionado' : ''} key={p.id}><input type="radio" name="paciente-tratamiento" checked={seleccionado?.id === p.id} onChange={() => setSeleccionado(p)} /><span><strong>{p.apellido}, {p.nombre}</strong><small>DNI {p.dni}</small></span></label>)}</div><div className="confirmar-paciente-epicrisis"><span>{seleccionado ? `Seleccionado: ${seleccionado.apellido}, ${seleccionado.nombre}` : 'Seleccioná un paciente para continuar.'}</span><button className="boton-principal" disabled={!seleccionado} onClick={confirmarPaciente}>Confirmar paciente</button></div></section>}
-    {pantalla === 'decision' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button className="boton-secundario" onClick={() => setPantalla('datos')}>Consultar todos los datos</button></section><section className="panel decision-tratamiento"><div className="titulo-paso"><h2>¿Qué querés hacer?</h2><p>Elegí cómo continuar con este paciente.</p></div><div className="opciones-tratamiento"><button onClick={() => { setDecision('nuevo'); setPantalla('nuevo') }}><strong>Asignar nuevo tratamiento</strong><span>Definí el tratamiento y, si corresponde, cargá la primera sesión.</span></button><button onClick={abrirTratamientosActivos} disabled={cargando}><strong>Continuar un tratamiento</strong><span>Seleccioná un tratamiento sin terminar y registrá la próxima sesión.</span></button></div></section></>}
-    {pantalla === 'seleccionar-tratamiento' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button className="boton-secundario" onClick={() => setPantalla('datos')}>Consultar todos los datos</button></section><section className="panel seleccion-tratamiento"><div className="titulo-paso"><h2>Tratamientos sin terminar</h2><p>Seleccioná el tratamiento que querés continuar.</p></div><div className="lista-tratamientos-activos">{!tratamientosActivos.length ? <p>El paciente no tiene tratamientos pendientes.</p> : tratamientosActivos.map((item) => { const realizadas = item.cantidadSesionesTotal - item.cantidadSesionesFaltantes; return <label className={tratamientoSeleccionado?.id === item.id ? 'seleccionado' : ''} key={item.id}><input type="radio" name="tratamiento-activo" checked={tratamientoSeleccionado?.id === item.id} onChange={() => setTratamientoSeleccionado(item)} /><span><strong>{item.nombre}</strong><small>{realizadas} sesiones realizadas de {item.cantidadSesionesTotal}</small></span><em>{item.cantidadSesionesFaltantes} pendientes</em></label> })}</div><div className="pie-seleccion-tratamiento"><span>{tratamientoSeleccionado ? `Seleccionado: ${tratamientoSeleccionado.nombre}` : 'Seleccioná un tratamiento para continuar.'}</span><button className="boton-principal" disabled={!tratamientoSeleccionado} onClick={abrirRegistroSesion}>Continuar tratamiento</button></div></section></>}
-    {pantalla === 'continuar' && <form className="formulario-registro-epicrisis" onSubmit={registrarSesion}><section className="panel resumen-tratamiento"><div><p className="sobrelinea">Próxima sesión</p><h2>{tratamientoSeleccionado.nombre}</h2><p>Sesión N.º {tratamientoSeleccionado.cantidadSesionesTotal - tratamientoSeleccionado.cantidadSesionesFaltantes + 1} de {tratamientoSeleccionado.cantidadSesionesTotal}</p></div><span>{tratamientoSeleccionado.cantidadSesionesFaltantes} sesiones pendientes</span></section><section className="panel primera-sesion"><div className="datos-primera-sesion datos-continuar-sesion"><div className="seccion-ficha-seguimiento"><div><h3>Ficha médica de la sesión</h3><p>Opcionalmente, asigná y completá una ficha médica.</p></div>{fichaSesion ? <div className="ficha-seguimiento-seleccionada"><span><strong>{fichaSesion.nombre}</strong></span><button type="button" onClick={abrirFicha}>Cambiar</button><button type="button" className="quitar-ficha-seguimiento" onClick={() => { setFichaSesion(null); setRespuestasFicha({}) }}>Quitar</button></div> : <button type="button" className="boton-secundario" onClick={abrirFicha}>Agregar ficha médica</button>}</div>{fichaSesion && <AsignacionFicha fichas={[fichaSesion]} cargando={false} idsSeleccionadas={[String(fichaSesion.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={abrirFicha} />}<label>Observaciones de la sesión<textarea required maxLength="1000" rows="8" value={observacionesSesion} onChange={(e) => setObservacionesSesion(e.target.value)} placeholder="Ingresá las observaciones clínicas de esta sesión…" /><small>{observacionesSesion.length} / 1000 caracteres</small></label></div></section><section className="panel acciones-registro-sesion"><button type="button" className="boton-secundario" onClick={cancelarRegistroSesion} disabled={cargando}>Cancelar registro</button><button className="boton-principal" disabled={cargando || !observacionesSesion.trim()}>{cargando ? 'Registrando…' : 'Confirmar registro'}</button></section></form>}
-    {pantalla === 'nuevo' && <form className="formulario-registro-epicrisis" onSubmit={registrar}><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Nuevo tratamiento para</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button type="button" className="boton-secundario" onClick={() => setPantalla('datos')}>Consultar todos los datos</button></section><section className="panel formulario-tratamiento"><div className="titulo-paso"><h2>Datos del tratamiento</h2><p>Completá la planificación general.</p></div><div className="grilla-datos-tratamiento"><label>Nombre<input required maxLength="150" value={tratamiento.nombre} onChange={(e) => setTratamiento({ ...tratamiento, nombre: e.target.value })} /></label><label>Cantidad total de sesiones<input required type="number" min="1" max="1000" value={tratamiento.cantidadSesionesTotal} onChange={(e) => setTratamiento({ ...tratamiento, cantidadSesionesTotal: e.target.value })} /></label><label className="campo-ancho">Descripción<textarea maxLength="1000" rows="5" value={tratamiento.descripcion} onChange={(e) => setTratamiento({ ...tratamiento, descripcion: e.target.value })} /></label></div></section><section className="panel primera-sesion"><label className="interruptor-sesion"><input type="checkbox" checked={cargarPrimera} onChange={(e) => { setCargarPrimera(e.target.checked); if (!e.target.checked) { setFichaSesion(null); setRespuestasFicha({}) } }} /><span><strong>Cargar la primera sesión ahora</strong><small>Se registrará como sesión N.º 1 y se descontará de las sesiones faltantes.</small></span></label>{cargarPrimera && <div className="datos-primera-sesion"><div className="seccion-ficha-seguimiento"><div><h3>Ficha médica de la sesión</h3><p>Opcionalmente, asigná y completá una ficha médica.</p></div>{fichaSesion ? <div className="ficha-seguimiento-seleccionada"><span><strong>{fichaSesion.nombre}</strong></span><button type="button" onClick={abrirFicha}>Cambiar</button><button type="button" className="quitar-ficha-seguimiento" onClick={() => { setFichaSesion(null); setRespuestasFicha({}) }}>Quitar</button></div> : <button type="button" className="boton-secundario" onClick={abrirFicha}>Agregar ficha médica</button>}</div>{fichaSesion && <AsignacionFicha fichas={[fichaSesion]} cargando={false} idsSeleccionadas={[String(fichaSesion.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={abrirFicha} />}<label>Observaciones de la primera sesión<textarea required maxLength="1000" rows="7" value={observacionesSesion} onChange={(e) => setObservacionesSesion(e.target.value)} /></label></div>}</section><section className="panel acciones-tratamiento"><p>Se solicitará confirmación antes de guardar.</p><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando…' : 'Asignar tratamiento'}</button></section></form>}
+    {pantalla === 'decision' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button className="boton-secundario" onClick={() => consultarDatosPaciente('decision')}>Consultar todos los datos</button></section><section className="panel decision-tratamiento"><div className="titulo-paso"><h2>¿Qué querés hacer?</h2><p>Elegí cómo continuar con este paciente.</p></div><div className="opciones-tratamiento"><button onClick={() => { setDecision('nuevo'); setPantalla('nuevo') }}><strong>Asignar nuevo tratamiento</strong><span>Definí el tratamiento y, si corresponde, cargá la primera sesión.</span></button><button onClick={abrirTratamientosActivos} disabled={cargando}><strong>Continuar un tratamiento</strong><span>Seleccioná un tratamiento sin terminar y registrá la próxima sesión.</span></button></div></section></>}
+    {pantalla === 'seleccionar-tratamiento' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button className="boton-secundario" onClick={() => consultarDatosPaciente('seleccionar-tratamiento')}>Consultar todos los datos</button></section><section className="panel seleccion-tratamiento"><div className="titulo-paso"><h2>Tratamientos sin terminar</h2><p>Seleccioná el tratamiento que querés continuar.</p></div><div className="lista-tratamientos-activos">{!tratamientosActivos.length ? <p>El paciente no tiene tratamientos pendientes.</p> : tratamientosActivos.map((item) => { const realizadas = item.cantidadSesionesTotal - item.cantidadSesionesFaltantes; return <label className={tratamientoSeleccionado?.id === item.id ? 'seleccionado' : ''} key={item.id}><input type="radio" name="tratamiento-activo" checked={tratamientoSeleccionado?.id === item.id} onChange={() => setTratamientoSeleccionado(item)} /><span><strong>{item.nombre}</strong><small>{realizadas} sesiones realizadas de {item.cantidadSesionesTotal}</small></span><em>{item.cantidadSesionesFaltantes} pendientes</em></label> })}</div><div className="pie-seleccion-tratamiento"><span>{tratamientoSeleccionado ? `Seleccionado: ${tratamientoSeleccionado.nombre}` : 'Seleccioná un tratamiento para continuar.'}</span><button className="boton-principal" disabled={!tratamientoSeleccionado} onClick={abrirRegistroSesion}>Continuar tratamiento</button></div></section></>}
+    {pantalla === 'continuar' && <form className="formulario-registro-epicrisis" onSubmit={registrarSesion}><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Nueva sesión para</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button type="button" className="boton-secundario" onClick={() => consultarDatosPaciente('continuar')}>Consultar todos los datos</button></section><section className="panel resumen-tratamiento"><div><p className="sobrelinea">Próxima sesión</p><h2>{tratamientoSeleccionado.nombre}</h2><p>Sesión N.º {tratamientoSeleccionado.cantidadSesionesTotal - tratamientoSeleccionado.cantidadSesionesFaltantes + 1} de {tratamientoSeleccionado.cantidadSesionesTotal}</p></div><span>{tratamientoSeleccionado.cantidadSesionesFaltantes} sesiones pendientes</span></section><section className="panel primera-sesion"><div className="datos-primera-sesion datos-continuar-sesion"><div className="seccion-ficha-seguimiento"><div><h3>Ficha médica de la sesión</h3><p>Opcionalmente, asigná y completá una ficha médica.</p></div>{fichaSesion ? <div className="ficha-seguimiento-seleccionada"><span><strong>{fichaSesion.nombre}</strong></span><button type="button" onClick={abrirFicha}>Cambiar</button><button type="button" className="quitar-ficha-seguimiento" onClick={() => { setFichaSesion(null); setRespuestasFicha({}) }}>Quitar</button></div> : <button type="button" className="boton-secundario" onClick={abrirFicha}>Agregar ficha médica</button>}</div>{fichaSesion && <AsignacionFicha fichas={[fichaSesion]} cargando={false} idsSeleccionadas={[String(fichaSesion.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={abrirFicha} />}<label>Observaciones de la sesión <span>(opcional)</span><textarea maxLength="1000" rows="8" value={observacionesSesion} onChange={(e) => setObservacionesSesion(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /><small>{observacionesSesion.length} / 1000 caracteres</small></label></div></section><section className="panel acciones-registro-sesion"><button type="button" className="boton-secundario" onClick={cancelarRegistroSesion} disabled={cargando}>Cancelar registro</button><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando…' : 'Confirmar registro'}</button></section></form>}
+    {pantalla === 'nuevo' && <form className="formulario-registro-epicrisis" onSubmit={registrar}><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Nuevo tratamiento para</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button type="button" className="boton-secundario" onClick={() => consultarDatosPaciente('nuevo')}>Consultar todos los datos</button></section><section className="panel formulario-tratamiento"><div className="titulo-paso"><h2>Datos del tratamiento</h2><p>Completá la planificación general.</p></div><div className="grilla-datos-tratamiento"><label>Nombre<input required maxLength="150" value={tratamiento.nombre} onChange={(e) => setTratamiento({ ...tratamiento, nombre: e.target.value })} /></label><label>Cantidad total de sesiones<input required type="number" min="1" max="1000" value={tratamiento.cantidadSesionesTotal} onChange={(e) => setTratamiento({ ...tratamiento, cantidadSesionesTotal: e.target.value })} /></label><label className="campo-ancho">Descripción<textarea maxLength="1000" rows="5" value={tratamiento.descripcion} onChange={(e) => setTratamiento({ ...tratamiento, descripcion: e.target.value })} /></label></div></section><section className="panel primera-sesion"><label className="interruptor-sesion"><input type="checkbox" checked={cargarPrimera} onChange={(e) => { setCargarPrimera(e.target.checked); if (!e.target.checked) { setFichaSesion(null); setRespuestasFicha({}) } }} /><span><strong>Cargar la primera sesión ahora</strong><small>Se registrará como sesión N.º 1 y se descontará de las sesiones faltantes.</small></span></label>{cargarPrimera && <div className="datos-primera-sesion"><div className="seccion-ficha-seguimiento"><div><h3>Ficha médica de la sesión</h3><p>Opcionalmente, asigná y completá una ficha médica.</p></div>{fichaSesion ? <div className="ficha-seguimiento-seleccionada"><span><strong>{fichaSesion.nombre}</strong></span><button type="button" onClick={abrirFicha}>Cambiar</button><button type="button" className="quitar-ficha-seguimiento" onClick={() => { setFichaSesion(null); setRespuestasFicha({}) }}>Quitar</button></div> : <button type="button" className="boton-secundario" onClick={abrirFicha}>Agregar ficha médica</button>}</div>{fichaSesion && <AsignacionFicha fichas={[fichaSesion]} cargando={false} idsSeleccionadas={[String(fichaSesion.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={abrirFicha} />}<label>Observaciones de la primera sesión <span>(opcional)</span><textarea maxLength="1000" rows="7" value={observacionesSesion} onChange={(e) => setObservacionesSesion(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /></label></div>}</section><section className="panel acciones-tratamiento"><p>Se solicitará confirmación antes de guardar.</p><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando…' : 'Asignar tratamiento'}</button></section></form>}
     {modalAbierto && <div className="fondo-modal-ficha" onMouseDown={(e) => { if (e.target === e.currentTarget) setModalAbierto(false) }}><section className="modal-ficha-seguimiento" role="dialog" aria-modal="true"><header><div><p className="sobrelinea">Plantillas disponibles</p><h2>Ficha médica de la sesión</h2></div><button type="button" onClick={() => setModalAbierto(false)}>×</button></header><div className="lista-modal-fichas">{!fichasDisponibles.length ? <p className="estado-modal-fichas">No hay fichas médicas disponibles.</p> : fichasDisponibles.map((f) => <label className={idFichaModal === String(f.id) ? 'seleccionada' : ''} key={f.id}><input type="radio" checked={idFichaModal === String(f.id)} onChange={() => setIdFichaModal(String(f.id))} /><span><strong>{f.nombre}</strong><small>{f.descripcion || `${f.detalles.length} secciones`}</small></span></label>)}</div><footer><button type="button" className="boton-secundario" onClick={() => setModalAbierto(false)}>Cancelar</button><button type="button" className="boton-principal" disabled={!idFichaModal} onClick={elegirFicha}>Agregar</button></footer></section></div>}
   </main>
 }
@@ -240,7 +336,7 @@ function GestionEpicrisis({ onVolver }) {
     setCargando(true); setMensaje(null)
     try {
       await apiEpicrisis.registrar(idProfesional, seleccionado.id, {
-        observaciones,
+        observaciones: observaciones.trim() || 'Sin observaciones',
         idFichaSeguimiento: fichaSeguimiento?.id || null,
         respuestasFichaSeguimiento: fichaSeguimiento ? Object.values(respuestasSeguimiento) : null,
       })
@@ -294,7 +390,7 @@ function GestionEpicrisis({ onVolver }) {
           respuestas={respuestasSeguimiento} setRespuestas={setRespuestasSeguimiento} ocultarSelector
           onSeleccionar={() => {}} onActualizar={abrirModalFicha} />
       </section>}
-      <section className="panel seccion-observaciones-epicrisis"><div className="titulo-paso"><h2>Observaciones</h2><p>Ingresá la síntesis clínica correspondiente a esta epicrisis.</p></div><label className="observaciones-epicrisis">Síntesis clínica<textarea autoFocus required maxLength="1000" rows="12" value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Ingresá las observaciones de la epicrisis…" /><small>{observaciones.length} / 1000 caracteres</small></label><div className="acciones-epicrisis"><p>Se solicitará confirmación antes de guardar.</p><button className="boton-principal" disabled={cargando || !observaciones.trim()}>{cargando ? 'Registrando…' : 'Registrar epicrisis'}</button></div></section>
+      <section className="panel seccion-observaciones-epicrisis"><div className="titulo-paso"><h2>Observaciones</h2><p>Ingresá la síntesis clínica correspondiente a esta epicrisis.</p></div><label className="observaciones-epicrisis">Síntesis clínica <span>(opcional)</span><textarea autoFocus maxLength="1000" rows="12" value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /><small>{observaciones.length} / 1000 caracteres</small></label><div className="acciones-epicrisis"><p>Se solicitará confirmación antes de guardar.</p><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando…' : 'Registrar epicrisis'}</button></div></section>
     </form>}
     {modalFichaAbierto && <div className="fondo-modal-ficha" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setModalFichaAbierto(false) }}>
       <section className="modal-ficha-seguimiento" role="dialog" aria-modal="true" aria-labelledby="titulo-modal-ficha">

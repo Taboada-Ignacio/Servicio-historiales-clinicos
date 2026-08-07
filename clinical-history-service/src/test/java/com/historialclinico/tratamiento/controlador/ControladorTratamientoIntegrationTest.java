@@ -104,6 +104,22 @@ class ControladorTratamientoIntegrationTest {
         repositorioPacientes.flush();
     }
 
+    @Test
+    void registraSesionSinObservacionesConTextoPredeterminado() throws Exception {
+        long paciente = crearPaciente();
+        String creado = mockMvc.perform(post("/api/v1/profesionales/90/pacientes/{paciente}/tratamientos", paciente)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"nombre\":\"Movilidad\",\"cantidadSesionesTotal\":2}"))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long idTratamiento = ((Number) JsonPath.read(creado, "$.id")).longValue();
+
+        mockMvc.perform(post("/api/v1/profesionales/90/pacientes/{paciente}/tratamientos/{tratamiento}/sesiones",
+                        paciente, idTratamiento).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"observaciones\":\"   \"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.sesiones[0].observaciones").value("Sin observaciones"));
+    }
+
     private long crearPaciente() throws Exception {
         String cuerpo = mockMvc.perform(post("/api/v1/profesionales/90/pacientes").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"nombre\":\"Lucía\",\"apellido\":\"Méndez\",\"dni\":\"40111222\",\"fechaNacimiento\":\"1995-02-03\",\"sexo\":\"FEMENINO\"}"))

@@ -43,7 +43,7 @@ public class ServicioTratamiento {
                 paciente.asignarFicha(completada);
                 repositorioFichasPaciente.save(completada);
             }
-            tratamiento.agregarSesion(new SesionTratamiento(solicitudSesion.observaciones().trim(), ficha, completada));
+            tratamiento.agregarSesion(new SesionTratamiento(normalizarObservaciones(solicitudSesion.observaciones()), ficha, completada));
         }
         return convertir(repositorio.save(tratamiento));
     }
@@ -77,8 +77,12 @@ public class ServicioTratamiento {
             tratamiento.getPaciente().asignarFicha(completada);
             repositorioFichasPaciente.saveAndFlush(completada);
         }
-        tratamiento.agregarSesion(new SesionTratamiento(solicitud.observaciones().trim(), ficha, completada));
+        tratamiento.agregarSesion(new SesionTratamiento(normalizarObservaciones(solicitud.observaciones()), ficha, completada));
         return convertir(repositorio.save(tratamiento));
+    }
+
+    private String normalizarObservaciones(String observaciones) {
+        return observaciones == null || observaciones.isBlank() ? "Sin observaciones" : observaciones.trim();
     }
 
     private Paciente buscarPaciente(Long idProfesional, Long idPaciente) {

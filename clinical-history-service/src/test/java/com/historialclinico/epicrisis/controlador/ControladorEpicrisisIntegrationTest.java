@@ -54,13 +54,14 @@ class ControladorEpicrisisIntegrationTest {
     }
 
     @Test
-    void validaObservacionesYAislaPorProfesional() throws Exception {
+    void completaObservacionesVaciasYAislaPorProfesional() throws Exception {
         long idPaciente = crearPaciente(71, "Mario", "Sosa", "36111222");
 
         mockMvc.perform(post("/api/v1/profesionales/71/pacientes/{idPaciente}/epicrisis", idPaciente)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"observaciones\":\"   \"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.observaciones").value("Sin observaciones"));
 
         mockMvc.perform(post("/api/v1/profesionales/72/pacientes/{idPaciente}/epicrisis", idPaciente)
                         .contentType(MediaType.APPLICATION_JSON)

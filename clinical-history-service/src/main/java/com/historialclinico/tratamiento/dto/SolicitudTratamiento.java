@@ -8,7 +8,7 @@ public record SolicitudTratamiento(
     @NotNull @Min(1) @Max(1000) Integer cantidadSesionesTotal,
     @Valid SolicitudSesion primeraSesion
 ) {
-    public record SolicitudSesion(@NotBlank @Size(max=1000) String observaciones,
+    public record SolicitudSesion(@Size(max=1000) String observaciones,
         @Positive Long idFichaSeguimiento, List<@Valid SolicitudRespuesta> respuestasFichaSeguimiento) {}
     public record SolicitudRespuesta(@NotNull @Positive Long idOpcion, @Size(max=1000) String valor, Boolean seleccionada) {}
 }

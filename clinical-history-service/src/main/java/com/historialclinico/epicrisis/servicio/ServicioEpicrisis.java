@@ -50,8 +50,12 @@ public class ServicioEpicrisis {
                 : construirFichaCompletada(fichaSeguimiento, solicitud.respuestasFichaSeguimiento());
         if (fichaCompletada != null) paciente.asignarFicha(fichaCompletada);
         Epicrisis epicrisis = new Epicrisis(paciente, fichaSeguimiento, fichaCompletada,
-                solicitud.observaciones().trim());
+                normalizarObservaciones(solicitud.observaciones()));
         return convertir(repositorio.save(epicrisis));
+    }
+
+    private String normalizarObservaciones(String observaciones) {
+        return observaciones == null || observaciones.isBlank() ? "Sin observaciones" : observaciones.trim();
     }
 
     private FichaPaciente construirFichaCompletada(FichaMedica ficha,
