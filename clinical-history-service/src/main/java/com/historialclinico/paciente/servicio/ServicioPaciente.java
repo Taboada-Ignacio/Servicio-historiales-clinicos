@@ -106,7 +106,8 @@ public class ServicioPaciente {
 
     @Transactional
     public void eliminar(Long idProfesional, Long idPaciente) {
-        repositorio.delete(buscarPacienteDelProfesional(idProfesional, idPaciente));
+        buscarPacienteDelProfesional(idProfesional, idPaciente);
+        throw new ExcepcionReglaNegocio("El borrado físico de pacientes está deshabilitado para preservar su historia clínica");
     }
 
     private Paciente buscarPacienteDelProfesional(Long idProfesional, Long idPaciente) {

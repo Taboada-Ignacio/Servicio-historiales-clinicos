@@ -26,6 +26,11 @@ services:
       DB_USER: ${POSTGRES_USER:-clinical_history}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       SERVER_PORT: 8080
+      AUDIT_ENCRYPTION_KEY: ${AUDIT_ENCRYPTION_KEY:?Defina AUDIT_ENCRYPTION_KEY con 32 bytes codificados en Base64}
+      AUDIT_RETENTION_YEARS: ${AUDIT_RETENTION_YEARS:-10}
+      SECURITY_MODE: ${SECURITY_MODE:-local}
+      JWT_ISSUER_URI: ${JWT_ISSUER_URI:-}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-clinical-history-service}
     ports:
       - "8080:8080"
     depends_on:

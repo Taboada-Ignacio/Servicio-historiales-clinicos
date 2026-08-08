@@ -17,6 +17,11 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import com.historialclinico.auditoria.dto.InformeAuditoriaClinica;
+import com.historialclinico.auditoria.dto.RespuestaAuditoriaRectificacion;
+import com.historialclinico.epicrisis.dto.SolicitudRectificacionEpicrisis;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 
 @Validated
 @RestController
@@ -47,5 +52,26 @@ public class ControladorEpicrisis {
             @PathVariable @Positive Long idPaciente
     ) {
         return servicio.buscarDelPaciente(idProfesional, idPaciente);
+    }
+
+    @PostMapping("/{idEpicrisis}/rectificaciones")
+    public RespuestaEpicrisis rectificar(@PathVariable @Positive Long idProfesional,
+            @PathVariable @Positive Long idPaciente, @PathVariable @Positive Long idEpicrisis,
+            @Valid @RequestBody SolicitudRectificacionEpicrisis solicitud) {
+        return servicio.rectificar(idProfesional, idPaciente, idEpicrisis, solicitud);
+    }
+
+    @GetMapping("/{idEpicrisis}/auditoria")
+    public List<RespuestaAuditoriaRectificacion> auditoria(@PathVariable @Positive Long idProfesional,
+            @PathVariable @Positive Long idPaciente, @PathVariable @Positive Long idEpicrisis) {
+        return servicio.auditoria(idProfesional, idPaciente, idEpicrisis);
+    }
+
+    @GetMapping(value = "/{idEpicrisis}/informe-auditoria", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<InformeAuditoriaClinica> informeAuditoria(@PathVariable @Positive Long idProfesional,
+            @PathVariable @Positive Long idPaciente, @PathVariable @Positive Long idEpicrisis) {
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION,
+                "attachment; filename=auditoria-epicrisis-" + idEpicrisis + ".json")
+                .body(servicio.informeAuditoria(idProfesional, idPaciente, idEpicrisis));
     }
 }

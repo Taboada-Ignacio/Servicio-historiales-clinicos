@@ -9,6 +9,13 @@ import com.historialclinico.paciente.repositorio.RepositorioFichaPaciente;
 import com.historialclinico.tratamiento.dto.*;
 import com.historialclinico.tratamiento.modelo.*;
 import com.historialclinico.tratamiento.repositorio.RepositorioTratamiento;
+import com.historialclinico.tratamiento.repositorio.RepositorioSesionTratamiento;
+import com.historialclinico.auditoria.dto.InformeAuditoriaClinica;
+import com.historialclinico.auditoria.dto.RespuestaAuditoriaRectificacion;
+import com.historialclinico.auditoria.modelo.TipoMotivoRectificacion;
+import com.historialclinico.auditoria.modelo.TipoRegistroClinico;
+import com.historialclinico.auditoria.servicio.ServicioAuditoriaClinica;
+import com.historialclinico.compartido.dto.RespuestaFichaClinica;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
@@ -22,10 +29,14 @@ public class ServicioTratamiento {
     private final RepositorioPaciente repositorioPacientes;
     private final RepositorioFichaMedica repositorioFichas;
     private final RepositorioFichaPaciente repositorioFichasPaciente;
+    private final RepositorioSesionTratamiento repositorioSesiones;
+    private final ServicioAuditoriaClinica auditoria;
     public ServicioTratamiento(RepositorioTratamiento repositorio, RepositorioPaciente repositorioPacientes,
-            RepositorioFichaMedica repositorioFichas, RepositorioFichaPaciente repositorioFichasPaciente) {
+            RepositorioFichaMedica repositorioFichas, RepositorioFichaPaciente repositorioFichasPaciente,
+            RepositorioSesionTratamiento repositorioSesiones, ServicioAuditoriaClinica auditoria) {
         this.repositorio = repositorio; this.repositorioPacientes = repositorioPacientes;
         this.repositorioFichas = repositorioFichas; this.repositorioFichasPaciente = repositorioFichasPaciente;
+        this.repositorioSesiones = repositorioSesiones; this.auditoria = auditoria;
     }
 
     @Transactional
@@ -81,6 +92,116 @@ public class ServicioTratamiento {
         return convertir(repositorio.save(tratamiento));
     }
 
+    @Transactional
+    public RespuestaTratamiento rectificarTratamiento(Long idProfesional, Long idPaciente, Long idTratamiento,
+            SolicitudRectificacionTratamiento solicitud) {
+        Tratamiento tratamiento = repositorio.buscarParaRectificar(idTratamiento, idPaciente, idProfesional)
+                .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Tratamiento no encontrado"));
+        validarVersion(tratamiento.getVersionClinica(), solicitud.rectificacion().versionEsperada());
+        Object antes = snapshotTratamiento(tratamiento);
+        boolean anular = solicitud.rectificacion().tipoMotivo() == TipoMotivoRectificacion.ANULACION_CARGA_ERRONEA;
+        int versionAnterior = tratamiento.getVersionClinica();
+        try {
+            tratamiento.rectificar(anular ? tratamiento.getNombre() : solicitud.nombre().trim(),
+                    anular ? tratamiento.getDescripcion() : normalizar(solicitud.descripcion()),
+                    anular ? tratamiento.getCantidadSesionesTotal() : solicitud.cantidadSesionesTotal(), anular);
+        } catch (IllegalArgumentException ex) { throw new ExcepcionReglaNegocio(ex.getMessage()); }
+        repositorio.saveAndFlush(tratamiento);
+        auditoria.registrar(TipoRegistroClinico.TRATAMIENTO, tratamiento.getId(), idPaciente, idProfesional,
+                versionAnterior, tratamiento.getVersionClinica(), solicitud.rectificacion(), antes,
+                snapshotTratamiento(tratamiento));
+        return convertir(tratamiento);
+    }
+
+    @Transactional
+    public RespuestaTratamiento.RespuestaSesion rectificarSesion(Long idProfesional, Long idPaciente,
+            Long idTratamiento, Long idSesion, SolicitudRectificacionSesion solicitud) {
+        SesionTratamiento sesion = repositorioSesiones.buscarParaRectificar(idSesion, idTratamiento, idPaciente, idProfesional)
+                .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Sesión no encontrada"));
+        validarVersion(sesion.getVersionClinica(), solicitud.rectificacion().versionEsperada());
+        Object antes = snapshotSesion(sesion);
+        boolean anular = solicitud.rectificacion().tipoMotivo() == TipoMotivoRectificacion.ANULACION_CARGA_ERRONEA;
+        FichaMedica ficha = sesion.getFichaSeguimiento(); FichaPaciente completada = sesion.getFichaPacienteSeguimiento();
+        String observaciones = sesion.getObservaciones();
+        if (!anular) {
+            observaciones = normalizarObservaciones(solicitud.observaciones());
+            boolean conservarFicha = ficha != null && ficha.getId().equals(solicitud.idFichaSeguimiento())
+                    && solicitud.respuestasFichaSeguimiento() == null;
+            if (!conservarFicha) {
+                ficha = solicitud.idFichaSeguimiento() == null ? null : repositorioFichas
+                        .buscarPorIdYProfesional(solicitud.idFichaSeguimiento(), idProfesional)
+                        .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Ficha médica de la sesión no encontrada"));
+                completada = ficha == null ? null : construirFicha(ficha, solicitud.respuestasFichaSeguimiento());
+                if (completada != null) {
+                    sesion.getTratamiento().getPaciente().asignarFicha(completada);
+                    repositorioFichasPaciente.save(completada);
+                }
+            }
+        }
+        int versionAnterior = sesion.getVersionClinica();
+        sesion.rectificar(observaciones, ficha, completada, anular);
+        repositorioSesiones.saveAndFlush(sesion);
+        auditoria.registrar(TipoRegistroClinico.SESION, sesion.getId(), idPaciente, idProfesional,
+                versionAnterior, sesion.getVersionClinica(), solicitud.rectificacion(), antes, snapshotSesion(sesion));
+        return convertirSesion(sesion);
+    }
+
+    public List<RespuestaAuditoriaRectificacion> auditoria(Long idProfesional, Long idPaciente,
+            TipoRegistroClinico tipo, Long idTratamiento, Long idRegistro) {
+        verificarRegistro(idProfesional, idPaciente, tipo, idTratamiento, idRegistro);
+        return auditoria.listar(idProfesional, idPaciente, tipo, idRegistro);
+    }
+
+    public InformeAuditoriaClinica informeAuditoria(Long idProfesional, Long idPaciente,
+            TipoRegistroClinico tipo, Long idTratamiento, Long idRegistro) {
+        verificarRegistro(idProfesional, idPaciente, tipo, idTratamiento, idRegistro);
+        return auditoria.informe(idProfesional, idPaciente, tipo, idRegistro);
+    }
+
+    private void verificarRegistro(Long idProfesional, Long idPaciente, TipoRegistroClinico tipo,
+            Long idTratamiento, Long idRegistro) {
+        boolean existe = tipo == TipoRegistroClinico.TRATAMIENTO
+                ? repositorio.buscarParaRectificar(idRegistro, idPaciente, idProfesional).isPresent()
+                : repositorioSesiones.buscarParaRectificar(idRegistro, idTratamiento, idPaciente, idProfesional).isPresent();
+        if (!existe) throw new ExcepcionRecursoNoEncontrado("Registro clínico no encontrado");
+    }
+
+    private void validarVersion(int actual, int esperada) {
+        if (actual != esperada)
+            throw new ExcepcionReglaNegocio("El registro fue modificado desde otra sesión; recargue la historia clínica");
+    }
+
+    private String normalizar(String valor) { return valor == null || valor.isBlank() ? null : valor.trim(); }
+
+    private Object snapshotTratamiento(Tratamiento t) {
+        Map<String, Object> datos = new LinkedHashMap<>(); datos.put("id", t.getId());
+        datos.put("idPaciente", t.getPaciente().getId()); datos.put("fechaClinicaOriginal", t.getFechaCreacion());
+        datos.put("nombre", t.getNombre()); datos.put("descripcion", t.getDescripcion());
+        datos.put("cantidadSesionesTotal", t.getCantidadSesionesTotal());
+        datos.put("cantidadSesionesFaltantes", t.getCantidadSesionesFaltantes());
+        datos.put("versionClinica", t.getVersionClinica()); datos.put("estadoRegistro", t.getEstadoRegistro()); return datos;
+    }
+
+    private Object snapshotSesion(SesionTratamiento s) {
+        Map<String, Object> datos = new LinkedHashMap<>(); datos.put("id", s.getId());
+        datos.put("idTratamiento", s.getTratamiento().getId()); datos.put("idPaciente", s.getTratamiento().getPaciente().getId());
+        datos.put("numeroSesion", s.getNroSesion()); datos.put("fechaClinicaOriginal", s.getFechaHora());
+        datos.put("observaciones", s.getObservaciones()); datos.put("versionClinica", s.getVersionClinica());
+        datos.put("estadoRegistro", s.getEstadoRegistro());
+        datos.put("idFichaSeguimiento", s.getFichaSeguimiento() == null ? null : s.getFichaSeguimiento().getId());
+        datos.put("fichaCompletada", snapshotFicha(s.getFichaPacienteSeguimiento())); return datos;
+    }
+
+    private Object snapshotFicha(FichaPaciente ficha) {
+        if (ficha == null) return null;
+        Map<String, Object> datos = new LinkedHashMap<>(); datos.put("id", ficha.getId());
+        datos.put("idPlantilla", ficha.getFichaMedica().getId()); datos.put("nombrePlantilla", ficha.getFichaMedica().getNombre());
+        datos.put("respuestas", ficha.getRespuestas().stream().map(r -> {
+            Map<String, Object> respuesta = new LinkedHashMap<>(); respuesta.put("idOpcion", r.getOpcion().getId());
+            respuesta.put("valor", r.getValor()); respuesta.put("seleccionada", r.getSeleccionada()); return respuesta;
+        }).toList()); return datos;
+    }
+
     private String normalizarObservaciones(String observaciones) {
         return observaciones == null || observaciones.isBlank() ? "Sin observaciones" : observaciones.trim();
     }
@@ -129,9 +250,21 @@ public class ServicioTratamiento {
     private RespuestaTratamiento convertir(Tratamiento tratamiento) {
         return new RespuestaTratamiento(tratamiento.getId(), tratamiento.getPaciente().getId(), tratamiento.getNombre(),
                 tratamiento.getDescripcion(), tratamiento.getCantidadSesionesTotal(), tratamiento.getCantidadSesionesFaltantes(),
-                tratamiento.getFechaCreacion(), tratamiento.getSesiones().stream().map(s -> new RespuestaTratamiento.RespuestaSesion(
-                    s.getId(), s.getNroSesion(), s.getObservaciones(), s.getFechaHora(),
-                    s.getFichaSeguimiento() == null ? null : s.getFichaSeguimiento().getId(),
-                    s.getFichaSeguimiento() == null ? null : s.getFichaSeguimiento().getNombre())).toList());
+                tratamiento.getFechaCreacion(), tratamiento.getVersionClinica(), tratamiento.getEstadoRegistro(),
+                tratamiento.getFechaUltimaRectificacion(), tratamiento.getSesiones().stream().map(this::convertirSesion).toList());
+    }
+
+    private RespuestaTratamiento.RespuestaSesion convertirSesion(SesionTratamiento s) {
+        return new RespuestaTratamiento.RespuestaSesion(s.getId(), s.getNroSesion(), s.getObservaciones(), s.getFechaHora(),
+                s.getFichaSeguimiento() == null ? null : s.getFichaSeguimiento().getId(),
+                s.getFichaSeguimiento() == null ? null : s.getFichaSeguimiento().getNombre(), convertirFicha(s.getFichaPacienteSeguimiento()),
+                s.getVersionClinica(), s.getEstadoRegistro(), s.getFechaUltimaRectificacion());
+    }
+
+    private RespuestaFichaClinica convertirFicha(FichaPaciente ficha) {
+        if (ficha == null) return null;
+        return new RespuestaFichaClinica(ficha.getFichaMedica().getId(), ficha.getFichaMedica().getNombre(),
+                ficha.getRespuestas().stream().map(r -> new RespuestaFichaClinica.Respuesta(
+                        r.getOpcion().getId(), r.getValor(), r.getSeleccionada())).toList());
     }
 }

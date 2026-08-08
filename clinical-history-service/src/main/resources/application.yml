@@ -15,6 +15,11 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -32,3 +37,15 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+app:
+  seguridad:
+    modo: ${SECURITY_MODE:local}
+    claim-id-profesional: ${PROFESSIONAL_ID_CLAIM:professional_id}
+    claim-nombre-profesional: ${PROFESSIONAL_NAME_CLAIM:professional_name}
+    claim-matricula-profesional: ${PROFESSIONAL_LICENSE_CLAIM:professional_license}
+    audiencia: ${JWT_AUDIENCE:clinical-history-service}
+  auditoria:
+    clave-base64: ${AUDIT_ENCRYPTION_KEY}
+    retencion-anios: ${AUDIT_RETENTION_YEARS:10}
+    confiar-cabeceras-proxy: ${TRUST_PROXY_HEADERS:false}

@@ -1,6 +1,8 @@
 # Servicio de historiales clínicos
 
-Sistema para administrar pacientes y sus historias clínicas. El alcance funcional se concentra exclusivamente en pacientes, epicrisis, fichas médicas y tratamientos. No incluye autenticación, permisos ni administración de profesionales.
+Sistema para administrar pacientes y sus historias clínicas. El alcance funcional se concentra exclusivamente en pacientes, epicrisis, fichas médicas y tratamientos. La autenticación y administración de profesionales pertenecen al futuro microservicio de usuarios; este servicio conserva la responsabilidad de autorizar la propiedad de cada recurso.
+
+> La integración JWT, la separación de responsabilidades y el procedimiento de rectificación/auditoría se documentan en [docs/INTEGRACION_USUARIOS_Y_RECTIFICACIONES.md](docs/INTEGRACION_USUARIOS_Y_RECTIFICACIONES.md).
 
 > **Importante:** la ausencia de autenticación es una decisión de alcance para esta etapa. El sistema no debe publicarse ni utilizar datos clínicos reales en estas condiciones.
 
@@ -378,7 +380,7 @@ Cada sesión puede utilizar como máximo una plantilla de ficha médica pertenec
 - Fechas y horas de backend almacenadas en UTC.
 - DTOs separados de las entidades de persistencia.
 - Migraciones de base de datos administradas con Flyway.
-- El borrado de un paciente es actualmente físico y elimina en cascada sus fichas, epicrisis, tratamientos y sesiones. Antes de uso productivo debe definirse una política clínica de conservación o borrado lógico.
+- El borrado físico de pacientes está deshabilitado para preservar epicrisis, tratamientos, sesiones y auditorías. Una futura baja deberá implementarse como inactivación lógica.
 - La arquitectura objetivo hará que el frontend se comunique con el API Gateway. Mientras Gateway no exista, Vite y el contenedor web redirigen `/api` directamente al microservicio.
 
 ### División de responsabilidades del backend
@@ -396,7 +398,7 @@ fichamedica/
 excepcion/       errores de negocio y tratamiento centralizado
 ```
 
-La autenticación todavía está fuera del alcance. Por eso los controladores reciben temporalmente `idProfesional` en la ruta. Cuando se incorpore JWT, el identificador del profesional deberá obtenerse de sus claims y no confiarse al cuerpo de la solicitud.
+Los controladores conservan temporalmente `idProfesional` en la ruta. En modo `jwt`, el servicio obtiene la identidad de los claims firmados y exige que coincida con la ruta; en modo `local` se mantiene compatibilidad de desarrollo. Véase la guía de integración enlazada al inicio.
 
 ## Índice de endpoints del servicio
 
@@ -420,6 +422,12 @@ La URL local del microservicio es `http://localhost:8080`. Actualmente expone di
 | Tratamientos | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos` |
 | Tratamientos | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos/sin-terminar` |
 | Tratamientos | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos/{idTratamiento}/sesiones` |
+| Epicrisis | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/epicrisis/{idEpicrisis}/rectificaciones` |
+| Epicrisis | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/epicrisis/{idEpicrisis}/auditoria` |
+| Epicrisis | `GET` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/epicrisis/{idEpicrisis}/informe-auditoria` |
+| Tratamientos | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos/{idTratamiento}/rectificaciones` |
+| Sesiones | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos/{idTratamiento}/sesiones/{idSesion}/rectificaciones` |
+| Tratamientos/sesiones | `GET` | Los mismos recursos terminados en `/auditoria` o `/informe-auditoria` |
 
 Además, Spring Boot Actuator y Springdoc exponen endpoints operativos:
 
@@ -806,7 +814,7 @@ Devuelve `200 OK` con el paciente actualizado.
 DELETE /api/v1/profesionales/10/pacientes/1
 ```
 
-Devuelve `204 No Content` sin cuerpo. Si el paciente no existe o pertenece a otro profesional, devuelve `404 Not Found`. El borrado actual es físico; por las claves foráneas y cascadas elimina también las fichas del paciente, sus epicrisis, tratamientos y sesiones.
+El borrado físico está bloqueado y devuelve `409 Conflict`, incluso si el paciente todavía no tiene atenciones. El registro se conserva; una futura baja deberá ser lógica.
 
 ### Errores y reglas de negocio
 
@@ -1014,8 +1022,8 @@ El alta se ejecuta dentro de una transacción. Si falla la ficha, sus respuestas
 
 La migración Flyway `V13__crear_tratamientos_y_sesiones.sql` incorpora:
 
-- Tabla `tratamientos`, vinculada a `pacientes` con eliminación en cascada.
-- Tabla `sesiones_tratamiento`, vinculada a su tratamiento con eliminación en cascada.
+- Tabla `tratamientos`, vinculada a `pacientes` sin eliminación en cascada.
+- Tabla `sesiones_tratamiento`, vinculada a su tratamiento sin eliminación en cascada.
 - Restricciones para totales positivos, pendientes dentro del rango y números de sesión positivos.
 - Unicidad de `(id_tratamiento, nro_sesion)`.
 - Referencias opcionales a la plantilla y a la ficha completada.

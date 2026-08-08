@@ -14,6 +14,9 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import com.historialclinico.auditoria.modelo.EstadoRegistroClinico;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 
 @Entity
 @Table(name = "epicrisis")
@@ -41,6 +44,16 @@ public class Epicrisis {
     @Column(nullable = false, length = 1000)
     private String observaciones;
 
+    @Column(name = "version_clinica", nullable = false)
+    private int versionClinica = 1;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_registro", nullable = false, length = 20)
+    private EstadoRegistroClinico estadoRegistro = EstadoRegistroClinico.VIGENTE;
+
+    @Column(name = "fecha_ultima_rectificacion")
+    private Instant fechaUltimaRectificacion;
+
     protected Epicrisis() {}
 
     public Epicrisis(Paciente paciente, FichaMedica fichaSeguimiento, FichaPaciente fichaPacienteSeguimiento,
@@ -58,4 +71,17 @@ public class Epicrisis {
     public FichaPaciente getFichaPacienteSeguimiento() { return fichaPacienteSeguimiento; }
     public Instant getFechaHora() { return fechaHora; }
     public String getObservaciones() { return observaciones; }
+    public int getVersionClinica() { return versionClinica; }
+    public EstadoRegistroClinico getEstadoRegistro() { return estadoRegistro; }
+    public Instant getFechaUltimaRectificacion() { return fechaUltimaRectificacion; }
+
+    public void rectificar(String observaciones, FichaMedica fichaSeguimiento,
+                           FichaPaciente fichaPacienteSeguimiento, boolean anular) {
+        this.observaciones = observaciones;
+        this.fichaSeguimiento = fichaSeguimiento;
+        this.fichaPacienteSeguimiento = fichaPacienteSeguimiento;
+        this.versionClinica++;
+        this.estadoRegistro = anular ? EstadoRegistroClinico.ANULADO : EstadoRegistroClinico.RECTIFICADO;
+        this.fechaUltimaRectificacion = Instant.now();
+    }
 }

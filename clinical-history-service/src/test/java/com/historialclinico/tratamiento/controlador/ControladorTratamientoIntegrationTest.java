@@ -19,6 +19,46 @@ class ControladorTratamientoIntegrationTest {
     @Autowired RepositorioPaciente repositorioPacientes;
 
     @Test
+    void rectificaTratamientoYSesionConAuditoriaIndependiente() throws Exception {
+        long paciente = crearPaciente();
+        String creado = mockMvc.perform(post("/api/v1/profesionales/90/pacientes/{paciente}/tratamientos", paciente)
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"nombre":"Plan original","descripcion":"Descripción original","cantidadSesionesTotal":3,
+                         "primeraSesion":{"observaciones":"Observación original"}}
+                        """))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long tratamiento = ((Number) JsonPath.read(creado, "$.id")).longValue();
+        long sesion = ((Number) JsonPath.read(creado, "$.sesiones[0].id")).longValue();
+
+        mockMvc.perform(post("/api/v1/profesionales/90/pacientes/{paciente}/tratamientos/{tratamiento}/rectificaciones",
+                        paciente, tratamiento).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"rectificacion":{"versionEsperada":1,"tipoMotivo":"ACLARACION",
+                         "motivo":"Se amplía la planificación clínica del tratamiento"},
+                         "nombre":"Plan rectificado","descripcion":"Descripción rectificada","cantidadSesionesTotal":4}
+                        """))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.versionClinica").value(2))
+                .andExpect(jsonPath("$.nombre").value("Plan rectificado"))
+                .andExpect(jsonPath("$.cantidadSesionesFaltantes").value(3));
+
+        mockMvc.perform(post("/api/v1/profesionales/90/pacientes/{paciente}/tratamientos/{tratamiento}/sesiones/{sesion}/rectificaciones",
+                        paciente, tratamiento, sesion).contentType(MediaType.APPLICATION_JSON).content("""
+                        {"rectificacion":{"versionEsperada":1,"tipoMotivo":"DATO_CLINICO_INCORRECTO",
+                         "motivo":"Se rectifica la observación clínica registrada"},"observaciones":"Observación rectificada"}
+                        """))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.versionClinica").value(2))
+                .andExpect(jsonPath("$.observaciones").value("Observación rectificada"));
+
+        mockMvc.perform(get("/api/v1/profesionales/90/pacientes/{paciente}/tratamientos/{tratamiento}/auditoria",
+                        paciente, tratamiento)).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].antes.nombre").value("Plan original"))
+                .andExpect(jsonPath("$[0].despues.nombre").value("Plan rectificado"));
+        mockMvc.perform(get("/api/v1/profesionales/90/pacientes/{paciente}/tratamientos/{tratamiento}/sesiones/{sesion}/auditoria",
+                        paciente, tratamiento, sesion)).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].antes.observaciones").value("Observación original"))
+                .andExpect(jsonPath("$[0].integridadValida").value(true));
+    }
+
+    @Test
     void creaTratamientoConPrimeraSesionYFicha() throws Exception {
         long paciente = crearPaciente();
         long[] ficha = crearFicha();

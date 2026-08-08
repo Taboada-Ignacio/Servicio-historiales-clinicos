@@ -18,3 +18,15 @@
 .observacion-detalle { margin: 24px 0 0; padding: 18px; border-radius: 11px; background: #f5f9f7; color: #405b54; line-height: 1.6; white-space: pre-wrap; }
 .sesiones-del-tratamiento .evento-historia { background: white; }
 @media (max-width:700px) { .encabezado-historia { align-items: flex-start; flex-direction: column; }.listado-historia,.detalle-historia > section { padding: 22px 18px; }.evento-historia { grid-template-columns: 62px minmax(90px,1fr) minmax(105px,.8fr) auto; gap: 6px; padding-inline: 7px; }.evento-historia button { width: auto; padding-inline: 7px; }.datos-evento { grid-template-columns: 1fr; } }
+.estado-version { display: flex; gap: .65rem; align-items: center; flex-wrap: wrap; margin: .75rem 0; }
+.estado-version strong { padding: .35rem .65rem; border-radius: 999px; background: #e7f5ef; color: #17654a; font-size: .78rem; }
+.estado-version.rectificado strong { background: #fff2ce; color: #765500; }.estado-version.anulado strong { background: #fee8e8; color: #982e2e; }
+.estado-version small { color: #66766f; }.acciones-rectificacion { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.25rem; }
+.formulario-rectificacion { display: grid; gap: 1rem; border: 2px solid #d9a62e; }
+.formulario-rectificacion label { display: grid; gap: .4rem; font-weight: 700; }
+.formulario-rectificacion input,.formulario-rectificacion select,.formulario-rectificacion textarea { width: 100%; box-sizing: border-box; border: 1px solid #b9c9c2; border-radius: 8px; padding: .75rem; font: inherit; }
+.formulario-rectificacion label small { justify-self: end; color: #66766f; font-weight: 400; }
+.aviso-anulacion { padding: 1rem; border-radius: 8px; background: #fff0f0; color: #8d2525; font-weight: 700; }
+.historial-rectificaciones { display: grid; gap: 1rem; }.historial-rectificaciones details { border: 1px solid #d8e2de; border-radius: 10px; padding: .85rem; }
+.historial-rectificaciones summary { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; cursor: pointer; }.historial-rectificaciones summary span { font-size: .75rem; color: #52655d; }.historial-rectificaciones summary small { margin-left: auto; }
+.historial-rectificaciones pre { max-height: 26rem; overflow: auto; padding: 1rem; border-radius: 8px; background: #10251e; color: #e9fff6; font-size: .75rem; white-space: pre-wrap; }

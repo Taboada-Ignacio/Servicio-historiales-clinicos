@@ -24,6 +24,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import com.historialclinico.auditoria.dto.InformeAuditoriaClinica;
+import com.historialclinico.auditoria.dto.RespuestaAuditoriaRectificacion;
+import com.historialclinico.auditoria.modelo.TipoMotivoRectificacion;
+import com.historialclinico.auditoria.modelo.TipoRegistroClinico;
+import com.historialclinico.auditoria.servicio.ServicioAuditoriaClinica;
+import com.historialclinico.epicrisis.dto.SolicitudRectificacionEpicrisis;
+import java.util.LinkedHashMap;
+import com.historialclinico.compartido.dto.RespuestaFichaClinica;
 
 @Service
 @Transactional(readOnly = true)
@@ -32,12 +40,14 @@ public class ServicioEpicrisis {
     private final RepositorioEpicrisis repositorio;
     private final RepositorioPaciente repositorioPacientes;
     private final RepositorioFichaMedica repositorioFichas;
+    private final ServicioAuditoriaClinica auditoria;
 
     public ServicioEpicrisis(RepositorioEpicrisis repositorio, RepositorioPaciente repositorioPacientes,
-                             RepositorioFichaMedica repositorioFichas) {
+                             RepositorioFichaMedica repositorioFichas, ServicioAuditoriaClinica auditoria) {
         this.repositorio = repositorio;
         this.repositorioPacientes = repositorioPacientes;
         this.repositorioFichas = repositorioFichas;
+        this.auditoria = auditoria;
     }
 
     @Transactional
@@ -110,6 +120,80 @@ public class ServicioEpicrisis {
                 .stream().map(this::convertir).toList();
     }
 
+    @Transactional
+    public RespuestaEpicrisis rectificar(Long idProfesional, Long idPaciente, Long idEpicrisis,
+            SolicitudRectificacionEpicrisis solicitud) {
+        Epicrisis epicrisis = repositorio.buscarParaRectificar(idEpicrisis, idPaciente, idProfesional)
+                .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Epicrisis no encontrada"));
+        validarVersion(epicrisis.getVersionClinica(), solicitud.rectificacion().versionEsperada());
+        Object antes = snapshot(epicrisis);
+        boolean anular = solicitud.rectificacion().tipoMotivo() == TipoMotivoRectificacion.ANULACION_CARGA_ERRONEA;
+        FichaMedica ficha = epicrisis.getFichaSeguimiento();
+        FichaPaciente completada = epicrisis.getFichaPacienteSeguimiento();
+        String observaciones = epicrisis.getObservaciones();
+        if (!anular) {
+            observaciones = normalizarObservaciones(solicitud.observaciones());
+            boolean conservarFicha = ficha != null && ficha.getId().equals(solicitud.idFichaSeguimiento())
+                    && solicitud.respuestasFichaSeguimiento() == null;
+            if (!conservarFicha) {
+                ficha = solicitud.idFichaSeguimiento() == null ? null
+                        : repositorioFichas.buscarPorIdYProfesional(solicitud.idFichaSeguimiento(), idProfesional)
+                        .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Ficha médica de seguimiento no encontrada"));
+                completada = ficha == null ? null : construirFichaCompletada(ficha, solicitud.respuestasFichaSeguimiento());
+                if (completada != null) epicrisis.getPaciente().asignarFicha(completada);
+            }
+        }
+        int versionAnterior = epicrisis.getVersionClinica();
+        epicrisis.rectificar(observaciones, ficha, completada, anular);
+        repositorio.saveAndFlush(epicrisis);
+        Object despues = snapshot(epicrisis);
+        auditoria.registrar(TipoRegistroClinico.EPICRISIS, epicrisis.getId(), idPaciente, idProfesional,
+                versionAnterior, epicrisis.getVersionClinica(), solicitud.rectificacion(), antes, despues);
+        return convertir(epicrisis);
+    }
+
+    public List<RespuestaAuditoriaRectificacion> auditoria(Long idProfesional, Long idPaciente, Long idEpicrisis) {
+        verificarExistencia(idProfesional, idPaciente, idEpicrisis);
+        return auditoria.listar(idProfesional, idPaciente, TipoRegistroClinico.EPICRISIS, idEpicrisis);
+    }
+
+    public InformeAuditoriaClinica informeAuditoria(Long idProfesional, Long idPaciente, Long idEpicrisis) {
+        verificarExistencia(idProfesional, idPaciente, idEpicrisis);
+        return auditoria.informe(idProfesional, idPaciente, TipoRegistroClinico.EPICRISIS, idEpicrisis);
+    }
+
+    private void verificarExistencia(Long idProfesional, Long idPaciente, Long idEpicrisis) {
+        if (repositorio.buscarParaRectificar(idEpicrisis, idPaciente, idProfesional).isEmpty())
+            throw new ExcepcionRecursoNoEncontrado("Epicrisis no encontrada");
+    }
+
+    private void validarVersion(int actual, int esperada) {
+        if (actual != esperada)
+            throw new ExcepcionReglaNegocio("El registro fue modificado desde otra sesión; recargue la historia clínica");
+    }
+
+    private Object snapshot(Epicrisis epicrisis) {
+        Map<String, Object> datos = new LinkedHashMap<>();
+        datos.put("id", epicrisis.getId()); datos.put("idPaciente", epicrisis.getPaciente().getId());
+        datos.put("fechaClinicaOriginal", epicrisis.getFechaHora()); datos.put("observaciones", epicrisis.getObservaciones());
+        datos.put("versionClinica", epicrisis.getVersionClinica()); datos.put("estadoRegistro", epicrisis.getEstadoRegistro());
+        datos.put("idFichaSeguimiento", epicrisis.getFichaSeguimiento() == null ? null : epicrisis.getFichaSeguimiento().getId());
+        datos.put("fichaCompletada", snapshotFicha(epicrisis.getFichaPacienteSeguimiento()));
+        return datos;
+    }
+
+    private Object snapshotFicha(FichaPaciente ficha) {
+        if (ficha == null) return null;
+        Map<String, Object> datos = new LinkedHashMap<>();
+        datos.put("id", ficha.getId()); datos.put("idPlantilla", ficha.getFichaMedica().getId());
+        datos.put("nombrePlantilla", ficha.getFichaMedica().getNombre()); datos.put("fechaAsignacion", ficha.getFechaAsignacion());
+        datos.put("respuestas", ficha.getRespuestas().stream().map(r -> {
+            Map<String, Object> respuesta = new LinkedHashMap<>(); respuesta.put("idOpcion", r.getOpcion().getId());
+            respuesta.put("valor", r.getValor()); respuesta.put("seleccionada", r.getSeleccionada()); return respuesta;
+        }).toList());
+        return datos;
+    }
+
     private Paciente buscarPaciente(Long idProfesional, Long idPaciente) {
         return repositorioPacientes.findByIdAndIdProfesional(idPaciente, idProfesional)
                 .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Paciente no encontrado"));
@@ -120,6 +204,14 @@ public class ServicioEpicrisis {
         FichaMedica ficha = epicrisis.getFichaSeguimiento();
         return new RespuestaEpicrisis(epicrisis.getId(), paciente.getId(), paciente.getNombre(),
                 paciente.getApellido(), ficha == null ? null : ficha.getId(), ficha == null ? null : ficha.getNombre(),
-                epicrisis.getFechaHora(), epicrisis.getObservaciones());
+                convertirFicha(epicrisis.getFichaPacienteSeguimiento()), epicrisis.getFechaHora(), epicrisis.getObservaciones(), epicrisis.getVersionClinica(),
+                epicrisis.getEstadoRegistro(), epicrisis.getFechaUltimaRectificacion());
+    }
+
+    private RespuestaFichaClinica convertirFicha(FichaPaciente ficha) {
+        if (ficha == null) return null;
+        return new RespuestaFichaClinica(ficha.getFichaMedica().getId(), ficha.getFichaMedica().getNombre(),
+                ficha.getRespuestas().stream().map(r -> new RespuestaFichaClinica.Respuesta(
+                        r.getOpcion().getId(), r.getValor(), r.getSeleccionada())).toList());
     }
 }

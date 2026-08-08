@@ -74,6 +74,8 @@ function GestionHistoriasClinicas({ onVolver }) {
   const [eventoDetalleAnterior, setEventoDetalleAnterior] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState(null)
+  const [rectificando, setRectificando] = useState(false)
+  const [auditoriaEvento, setAuditoriaEvento] = useState(null)
 
   const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
@@ -94,26 +96,70 @@ function GestionHistoriasClinicas({ onVolver }) {
     if (!window.confirm(`¿Confirmás que querés consultar la historia clínica de ${seleccionado.apellido}, ${seleccionado.nombre}?`)) return
     setCargando(true); setMensaje(null)
     try {
-      const [epicrisis, tratamientos] = await Promise.all([
-        apiEpicrisis.listar(idProfesional, seleccionado.id),
-        apiTratamientos.listar(idProfesional, seleccionado.id),
-      ])
-      const cronologia = [
-        ...epicrisis.map((item) => ({ tipo: 'epicrisis', fecha: item.fechaHora, nombre: 'Epicrisis', datos: item })),
-        ...tratamientos.map((item) => ({ tipo: 'tratamiento', fecha: item.fechaCreacion, nombre: item.nombre, datos: item })),
-        ...tratamientos.flatMap((tratamiento) => tratamiento.sesiones.map((sesion) => ({
-          tipo: 'sesion', fecha: sesion.fechaHora, nombre: `Sesión N.º ${sesion.nroSesion} · ${tratamiento.nombre}`,
-          datos: sesion, tratamiento,
-        }))),
-      ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+      const cronologia = await cargarCronologia()
       setEventos(cronologia); setEventoSeleccionado(null); setPantalla('historia')
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
     finally { setCargando(false) }
   }
 
+  const cargarCronologia = async () => {
+    const [epicrisis, tratamientos] = await Promise.all([
+      apiEpicrisis.listar(idProfesional, seleccionado.id), apiTratamientos.listar(idProfesional, seleccionado.id),
+    ])
+    const cronologia = [
+      ...epicrisis.map((item) => ({ tipo: 'epicrisis', fecha: item.fechaHora, nombre: 'Epicrisis', datos: item })),
+      ...tratamientos.map((item) => ({ tipo: 'tratamiento', fecha: item.fechaCreacion, nombre: item.nombre, datos: item })),
+      ...tratamientos.flatMap((tratamiento) => tratamiento.sesiones.map((sesion) => ({
+        tipo: 'sesion', fecha: sesion.fechaHora, nombre: `Sesión N.º ${sesion.nroSesion} · ${tratamiento.nombre}`,
+        datos: sesion, tratamiento,
+      }))),
+    ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+    setEventos(cronologia)
+    return cronologia
+  }
+
+  const guardarRectificacion = async (datos) => {
+    setCargando(true); setMensaje(null)
+    try {
+      const e = eventoSeleccionado
+      if (e.tipo === 'epicrisis') await apiEpicrisis.rectificar(idProfesional, seleccionado.id, e.datos.id, datos)
+      else if (e.tipo === 'tratamiento') await apiTratamientos.rectificar(idProfesional, seleccionado.id, e.datos.id, datos)
+      else await apiTratamientos.rectificarSesion(idProfesional, seleccionado.id, e.tratamiento.id, e.datos.id, datos)
+      const cronologia = await cargarCronologia()
+      const actualizado = cronologia.find((item) => item.tipo === e.tipo && item.datos.id === e.datos.id)
+      setEventoSeleccionado(actualizado); setRectificando(false); setAuditoriaEvento(null)
+      if (e.tipo === 'sesion' && eventoDetalleAnterior) {
+        setEventoDetalleAnterior(cronologia.find((item) => item.tipo === 'tratamiento' && item.datos.id === e.tratamiento.id))
+      }
+      setMensaje({ tipo: 'exito', texto: 'La rectificación quedó registrada con su auditoría inmutable.' })
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const consultarAuditoria = async () => {
+    setCargando(true); setMensaje(null)
+    try {
+      const e = eventoSeleccionado
+      const datos = e.tipo === 'epicrisis' ? await apiEpicrisis.auditoria(idProfesional, seleccionado.id, e.datos.id)
+        : e.tipo === 'tratamiento' ? await apiTratamientos.auditoria(idProfesional, seleccionado.id, e.datos.id)
+          : await apiTratamientos.auditoriaSesion(idProfesional, seleccionado.id, e.tratamiento.id, e.datos.id)
+      setAuditoriaEvento(datos)
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const descargarAuditoria = async () => {
+    try {
+      const e = eventoSeleccionado
+      if (e.tipo === 'epicrisis') await apiEpicrisis.descargarInforme(idProfesional, seleccionado.id, e.datos.id)
+      else if (e.tipo === 'tratamiento') await apiTratamientos.descargarInforme(idProfesional, seleccionado.id, e.datos.id)
+      else await apiTratamientos.descargarInformeSesion(idProfesional, seleccionado.id, e.tratamiento.id, e.datos.id)
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+  }
+
   const abrirDetalle = (evento, anterior = null) => {
-    setEventoDetalleAnterior(anterior); setEventoSeleccionado(evento); setPantalla('detalle')
+    setEventoDetalleAnterior(anterior); setEventoSeleccionado(evento); setRectificando(false); setAuditoriaEvento(null); setPantalla('detalle')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const volver = pantalla === 'buscar' ? onVolver : () => {
@@ -131,7 +177,11 @@ function GestionHistoriasClinicas({ onVolver }) {
     {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
     {pantalla === 'buscar' && <section className="panel buscador-paciente-epicrisis"><div className="titulo-paso"><h2>Buscar paciente</h2><p>Ingresá apellido o nombre para buscar coincidencias.</p></div><div className="fila-busqueda-epicrisis"><label className="buscador-epicrisis">Apellido - nombre<input autoFocus type="search" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscarPacientes() } }} placeholder="Ej. Pérez - Ana" /></label><button className="boton-principal" onClick={buscarPacientes} disabled={cargando || !busqueda.trim()}>{cargando ? 'Buscando…' : 'Buscar'}</button></div><div className="resultados-pacientes-epicrisis">{!buscado ? <p>Los pacientes encontrados aparecerán aquí.</p> : !pacientesFiltrados.length ? <p>No se encontraron pacientes.</p> : pacientesFiltrados.map((paciente) => <label className={seleccionado?.id === paciente.id ? 'seleccionado' : ''} key={paciente.id}><input type="radio" name="paciente-historia" checked={seleccionado?.id === paciente.id} onChange={() => setSeleccionado(paciente)} /><span><strong>{paciente.apellido}, {paciente.nombre}</strong><small>DNI {paciente.dni}</small></span></label>)}</div><div className="confirmar-paciente-epicrisis"><span>{seleccionado ? `Seleccionado: ${seleccionado.apellido}, ${seleccionado.nombre}` : 'Seleccioná un paciente para continuar.'}</span><button className="boton-principal" disabled={!seleccionado || cargando} onClick={consultarHistoria}>{cargando ? 'Consultando…' : 'Consultar historia clínica'}</button></div></section>}
     {pantalla === 'historia' && <><section className="panel identidad-paciente-epicrisis cabecera-historia"><div><p className="sobrelinea">Historia clínica de</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section><section className="panel listado-historia"><div className="encabezado-historia"><div><p className="sobrelinea">Cronología clínica</p><h2>Registros del paciente</h2></div><span>{eventos.length} registros</span></div><div className="eventos-historia">{!eventos.length ? <p className="estado-vacio">Este paciente todavía no tiene registros clínicos.</p> : eventos.map((evento) => <EventoHistoria evento={evento} formatearFecha={formatearFecha} onConsultar={() => abrirDetalle(evento)} key={`${evento.tipo}-${evento.datos.id}`} />)}</div></section></>}
-    {pantalla === 'detalle' && eventoSeleccionado && <DetalleHistoria evento={eventoSeleccionado} formatearFecha={formatearFecha} onConsultarSesion={(sesion) => abrirDetalle({ tipo: 'sesion', fecha: sesion.fechaHora, nombre: `Sesión N.º ${sesion.nroSesion} · ${eventoSeleccionado.datos.nombre}`, datos: sesion, tratamiento: eventoSeleccionado.datos }, eventoSeleccionado)} />}
+    {pantalla === 'detalle' && eventoSeleccionado && <DetalleHistoria evento={eventoSeleccionado} idProfesional={idProfesional} formatearFecha={formatearFecha}
+      rectificando={rectificando} cargando={cargando} auditoria={auditoriaEvento}
+      onRectificar={() => { setRectificando(true); setAuditoriaEvento(null) }} onCancelarRectificacion={() => setRectificando(false)}
+      onGuardarRectificacion={guardarRectificacion} onConsultarAuditoria={consultarAuditoria} onDescargarAuditoria={descargarAuditoria}
+      onConsultarSesion={(sesion) => abrirDetalle({ tipo: 'sesion', fecha: sesion.fechaHora, nombre: `Sesión N.º ${sesion.nroSesion} · ${eventoSeleccionado.datos.nombre}`, datos: sesion, tratamiento: eventoSeleccionado.datos }, eventoSeleccionado)} />}
   </main>
 }
 
@@ -140,14 +190,68 @@ function EventoHistoria({ evento, formatearFecha, onConsultar }) {
   return <article className="evento-historia"><span className={`tipo-evento ${evento.tipo}`}>{etiquetas[evento.tipo]}</span><strong>{evento.nombre}</strong><small>{formatearFecha(evento.fecha)}</small><button type="button" className="boton-secundario" onClick={onConsultar}>Consultar datos</button></article>
 }
 
-function DetalleHistoria({ evento, formatearFecha, onConsultarSesion }) {
+function DetalleHistoria({ evento, idProfesional, formatearFecha, onConsultarSesion, rectificando, cargando, auditoria,
+  onRectificar, onCancelarRectificacion, onGuardarRectificacion, onConsultarAuditoria, onDescargarAuditoria }) {
   const { datos } = evento
+  const acciones = <div className="acciones-rectificacion"><button type="button" className="boton-principal" onClick={onRectificar}>Rectificar registro</button><button type="button" className="boton-secundario" onClick={onConsultarAuditoria} disabled={cargando}>{cargando ? 'Consultando…' : 'Ver historial de rectificaciones'}</button><button type="button" className="boton-secundario" onClick={onDescargarAuditoria}>Descargar informe de auditoría</button></div>
   if (evento.tipo === 'tratamiento') {
     const realizadas = datos.cantidadSesionesTotal - datos.cantidadSesionesFaltantes
-    return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle del tratamiento</p><h2>{datos.nombre}</h2><p className="fecha-detalle">Creado el {formatearFecha(datos.fechaCreacion)}</p><dl className="datos-evento"><div><dt>Sesiones totales</dt><dd>{datos.cantidadSesionesTotal}</dd></div><div><dt>Sesiones realizadas</dt><dd>{realizadas}</dd></div><div><dt>Sesiones pendientes</dt><dd>{datos.cantidadSesionesFaltantes}</dd></div></dl><div className="observacion-detalle"><strong>Descripción</strong><br />{datos.descripcion || 'Sin descripción'}</div></section><section className="panel"><div className="encabezado-historia"><div><p className="sobrelinea">Seguimiento</p><h2>Sesiones del tratamiento</h2></div><span>{datos.sesiones.length} sesiones</span></div><div className="sesiones-del-tratamiento">{!datos.sesiones.length ? <p className="estado-vacio">Este tratamiento todavía no tiene sesiones registradas.</p> : [...datos.sesiones].sort((a, b) => new Date(b.fechaHora) - new Date(a.fechaHora)).map((sesion) => <EventoHistoria key={sesion.id} evento={{ tipo: 'sesion', nombre: `Sesión N.º ${sesion.nroSesion}`, fecha: sesion.fechaHora, datos: sesion }} formatearFecha={formatearFecha} onConsultar={() => onConsultarSesion(sesion)} />)}</div></section></section>
+    return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle del tratamiento</p><h2>{datos.nombre}</h2><EstadoVersion datos={datos} formatearFecha={formatearFecha} /><p className="fecha-detalle">Creado el {formatearFecha(datos.fechaCreacion)}</p><dl className="datos-evento"><div><dt>Sesiones totales</dt><dd>{datos.cantidadSesionesTotal}</dd></div><div><dt>Sesiones realizadas</dt><dd>{realizadas}</dd></div><div><dt>Sesiones pendientes</dt><dd>{datos.cantidadSesionesFaltantes}</dd></div></dl><div className="observacion-detalle"><strong>Descripción</strong><br />{datos.descripcion || 'Sin descripción'}</div>{!rectificando && acciones}</section>{rectificando && <FormularioRectificacion evento={evento} idProfesional={idProfesional} cargando={cargando} onGuardar={onGuardarRectificacion} onCancelar={onCancelarRectificacion} />}<HistorialRectificaciones auditoria={auditoria} formatearFecha={formatearFecha} /><section className="panel"><div className="encabezado-historia"><div><p className="sobrelinea">Seguimiento</p><h2>Sesiones del tratamiento</h2></div><span>{datos.sesiones.length} sesiones</span></div><div className="sesiones-del-tratamiento">{!datos.sesiones.length ? <p className="estado-vacio">Este tratamiento todavía no tiene sesiones registradas.</p> : [...datos.sesiones].sort((a, b) => new Date(b.fechaHora) - new Date(a.fechaHora)).map((sesion) => <EventoHistoria key={sesion.id} evento={{ tipo: 'sesion', nombre: `Sesión N.º ${sesion.nroSesion}`, fecha: sesion.fechaHora, datos: sesion }} formatearFecha={formatearFecha} onConsultar={() => onConsultarSesion(sesion)} />)}</div></section></section>
   }
   const esEpicrisis = evento.tipo === 'epicrisis'
-  return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle de {esEpicrisis ? 'la epicrisis' : 'la sesión'}</p><h2>{esEpicrisis ? 'Epicrisis' : `Sesión N.º ${datos.nroSesion}`}</h2><p className="fecha-detalle">{formatearFecha(evento.fecha)}</p><dl className="datos-evento">{!esEpicrisis && <div><dt>Tratamiento</dt><dd>{evento.tratamiento.nombre}</dd></div>}<div><dt>Ficha médica</dt><dd>{datos.nombreFichaSeguimiento || 'Sin ficha médica'}</dd></div>{!esEpicrisis && <div><dt>Número de sesión</dt><dd>{datos.nroSesion}</dd></div>}</dl><div className="observacion-detalle"><strong>Observaciones</strong><br />{datos.observaciones || 'Sin observaciones'}</div></section></section>
+  return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle de {esEpicrisis ? 'la epicrisis' : 'la sesión'}</p><h2>{esEpicrisis ? 'Epicrisis' : `Sesión N.º ${datos.nroSesion}`}</h2><EstadoVersion datos={datos} formatearFecha={formatearFecha} /><p className="fecha-detalle">{formatearFecha(evento.fecha)}</p><dl className="datos-evento">{!esEpicrisis && <div><dt>Tratamiento</dt><dd>{evento.tratamiento.nombre}</dd></div>}<div><dt>Ficha médica</dt><dd>{datos.nombreFichaSeguimiento || 'Sin ficha médica'}</dd></div>{!esEpicrisis && <div><dt>Número de sesión</dt><dd>{datos.nroSesion}</dd></div>}</dl><div className="observacion-detalle"><strong>Observaciones</strong><br />{datos.observaciones || 'Sin observaciones'}</div>{!rectificando && acciones}</section>{rectificando && <FormularioRectificacion evento={evento} idProfesional={idProfesional} cargando={cargando} onGuardar={onGuardarRectificacion} onCancelar={onCancelarRectificacion} />}<HistorialRectificaciones auditoria={auditoria} formatearFecha={formatearFecha} /></section>
+}
+
+function EstadoVersion({ datos, formatearFecha }) {
+  return <div className={`estado-version ${datos.estadoRegistro?.toLowerCase() || 'vigente'}`}><strong>Versión {datos.versionClinica || 1} · {datos.estadoRegistro || 'VIGENTE'}</strong>{datos.fechaUltimaRectificacion && <small>Última rectificación: {formatearFecha(datos.fechaUltimaRectificacion)}</small>}</div>
+}
+
+function FormularioRectificacion({ evento, idProfesional, cargando, onGuardar, onCancelar }) {
+  const [tipoMotivo, setTipoMotivo] = useState('ERROR_TRANSCRIPCION')
+  const [motivo, setMotivo] = useState('')
+  const [nombre, setNombre] = useState(evento.datos.nombre || '')
+  const [descripcion, setDescripcion] = useState(evento.datos.descripcion || '')
+  const [total, setTotal] = useState(evento.datos.cantidadSesionesTotal || '')
+  const [observaciones, setObservaciones] = useState(evento.datos.observaciones || '')
+  const [fichasDisponibles, setFichasDisponibles] = useState([])
+  const [fichaClinica, setFichaClinica] = useState(null)
+  const [fichasCargadas, setFichasCargadas] = useState(evento.tipo === 'tratamiento')
+  const [respuestasFicha, setRespuestasFicha] = useState(() => Object.fromEntries(
+    (evento.datos.fichaCompletada?.respuestas || []).map((r) => [r.idOpcion, { ...r }])
+  ))
+  const anular = tipoMotivo === 'ANULACION_CARGA_ERRONEA'
+  useEffect(() => {
+    if (evento.tipo === 'tratamiento') return
+    apiFichasMedicas.listar(idProfesional).then((fichas) => {
+      setFichasDisponibles(fichas)
+      setFichaClinica(fichas.find((f) => f.id === evento.datos.idFichaSeguimiento) || null)
+    }).catch(() => setFichasDisponibles([])).finally(() => setFichasCargadas(true))
+  }, [evento.tipo, evento.datos.idFichaSeguimiento, idProfesional])
+  const seleccionarFicha = (id) => {
+    const ficha = fichasDisponibles.find((f) => String(f.id) === id) || null
+    setFichaClinica(ficha)
+    if (!ficha) return setRespuestasFicha({})
+    if (ficha.id === evento.datos.idFichaSeguimiento && evento.datos.fichaCompletada) {
+      return setRespuestasFicha(Object.fromEntries(evento.datos.fichaCompletada.respuestas.map((r) => [r.idOpcion, { ...r }])))
+    }
+    const respuestas = {}; ficha.detalles.flatMap((d) => d.campos).flatMap((c) => c.opciones).forEach((o) => {
+      respuestas[o.id] = { idOpcion: o.id, valor: null, seleccionada: o.tipo === 'SELECCION' ? false : null }
+    }); setRespuestasFicha(respuestas)
+  }
+  const enviar = (e) => {
+    e.preventDefault()
+    if (!window.confirm(anular ? 'El registro quedará marcado como anulado, pero no será eliminado. ¿Confirmás?' : 'La versión anterior se conservará de forma inmutable. ¿Confirmás la rectificación?')) return
+    const rectificacion = { versionEsperada: evento.datos.versionClinica || 1, tipoMotivo, motivo }
+    if (evento.tipo === 'tratamiento') onGuardar({ rectificacion, nombre, descripcion, cantidadSesionesTotal: Number(total) })
+    else onGuardar({ rectificacion, observaciones, idFichaSeguimiento: fichaClinica?.id || null,
+      respuestasFichaSeguimiento: fichaClinica ? Object.values(respuestasFicha) : null })
+  }
+  return <form className="panel formulario-rectificacion" onSubmit={enviar}><div><p className="sobrelinea">Nueva versión clínica</p><h2>Rectificar sin sobrescribir</h2><p>La versión anterior permanecerá disponible en la auditoría.</p></div><label>Tipo de motivo<select value={tipoMotivo} onChange={(e) => setTipoMotivo(e.target.value)}><option value="ERROR_TRANSCRIPCION">Error de transcripción</option><option value="DATO_CLINICO_INCORRECTO">Dato clínico incorrecto</option><option value="ACLARACION">Aclaración</option><option value="INFORMACION_OMITIDA">Información omitida</option><option value="ANULACION_CARGA_ERRONEA">Anulación por carga errónea</option></select></label><label>Motivo detallado<textarea required minLength="10" maxLength="500" rows="4" value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Explicá concretamente por qué debe rectificarse." /><small>{motivo.length} / 500 caracteres</small></label>{anular ? <div className="aviso-anulacion">El registro seguirá existiendo y quedará identificado como anulado.</div> : evento.tipo === 'tratamiento' ? <><label>Nombre<input required maxLength="150" value={nombre} onChange={(e) => setNombre(e.target.value)} /></label><label>Cantidad total de sesiones<input required type="number" min="1" max="1000" value={total} onChange={(e) => setTotal(e.target.value)} /></label><label>Descripción<textarea maxLength="1000" rows="5" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} /></label></> : <><label>Observaciones rectificadas<textarea required maxLength="1000" rows="8" value={observaciones} onChange={(e) => setObservaciones(e.target.value)} /></label>{!fichasCargadas ? <p>Cargando fichas médicas…</p> : <><label>Ficha médica<select value={fichaClinica?.id || ''} onChange={(e) => seleccionarFicha(e.target.value)}><option value="">Sin ficha médica</option>{fichasDisponibles.map((f) => <option value={f.id} key={f.id}>{f.nombre}</option>)}</select></label>{fichaClinica && <AsignacionFicha fichas={[fichaClinica]} cargando={false} idsSeleccionadas={[String(fichaClinica.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={() => {}} />}</>}</>}<div className="acciones-rectificacion"><button type="button" className="boton-secundario" onClick={onCancelar} disabled={cargando}>Cancelar</button><button className="boton-principal" disabled={cargando || !fichasCargadas || motivo.trim().length < 10}>{cargando ? 'Registrando…' : 'Confirmar rectificación'}</button></div></form>
+}
+
+function HistorialRectificaciones({ auditoria, formatearFecha }) {
+  if (auditoria === null) return null
+  return <section className="panel historial-rectificaciones"><div><p className="sobrelinea">Trazabilidad</p><h2>Historial de rectificaciones</h2></div>{!auditoria.length ? <p className="estado-vacio">Este registro todavía no tiene rectificaciones.</p> : auditoria.map((item) => <details key={item.id}><summary><strong>Versión {item.versionAnterior} → {item.versionNueva}</strong><span>{item.tipoMotivo.replaceAll('_', ' ')}</span><small>{formatearFecha(item.fechaHoraUtc)} · Integridad {item.integridadValida ? 'verificada' : 'no válida'}</small></summary><p><b>Motivo:</b> {item.motivo}</p><p><b>Profesional:</b> {item.nombreProfesional || `ID ${item.idProfesional}`} {item.matriculaProfesional ? `· ${item.matriculaProfesional}` : ''}</p><p><b>IP:</b> {item.ipOrigen}</p><pre>{JSON.stringify({ antes: item.antes, despues: item.despues }, null, 2)}</pre></details>)}</section>
 }
 
 function GestionTratamientos({ onVolver }) {

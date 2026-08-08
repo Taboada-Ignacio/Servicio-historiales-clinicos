@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import com.historialclinico.auditoria.modelo.EstadoRegistroClinico;
 
 @Entity
 @Table(name = "tratamientos")
@@ -27,6 +28,13 @@ public class Tratamiento {
     @OneToMany(mappedBy = "tratamiento", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("nroSesion ASC")
     private List<SesionTratamiento> sesiones = new ArrayList<>();
+    @Column(name = "version_clinica", nullable = false)
+    private int versionClinica = 1;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado_registro", nullable = false, length = 20)
+    private EstadoRegistroClinico estadoRegistro = EstadoRegistroClinico.VIGENTE;
+    @Column(name = "fecha_ultima_rectificacion")
+    private Instant fechaUltimaRectificacion;
 
     protected Tratamiento() {}
     public Tratamiento(Paciente paciente, String nombre, String descripcion, int cantidadSesionesTotal) {
@@ -48,4 +56,20 @@ public class Tratamiento {
     public int getCantidadSesionesFaltantes() { return cantidadSesionesFaltantes; }
     public Instant getFechaCreacion() { return fechaCreacion; }
     public List<SesionTratamiento> getSesiones() { return sesiones; }
+    public int getVersionClinica() { return versionClinica; }
+    public EstadoRegistroClinico getEstadoRegistro() { return estadoRegistro; }
+    public Instant getFechaUltimaRectificacion() { return fechaUltimaRectificacion; }
+    public void rectificar(String nombre, String descripcion, int cantidadSesionesTotal, boolean anular) {
+        int realizadas = this.cantidadSesionesTotal - this.cantidadSesionesFaltantes;
+        if (cantidadSesionesTotal < realizadas) {
+            throw new IllegalArgumentException("La cantidad total no puede ser menor que las sesiones ya realizadas");
+        }
+        this.nombre = nombre;
+        this.descripcion = descripcion;
+        this.cantidadSesionesTotal = cantidadSesionesTotal;
+        this.cantidadSesionesFaltantes = cantidadSesionesTotal - realizadas;
+        this.versionClinica++;
+        this.estadoRegistro = anular ? EstadoRegistroClinico.ANULADO : EstadoRegistroClinico.RECTIFICADO;
+        this.fechaUltimaRectificacion = Instant.now();
+    }
 }

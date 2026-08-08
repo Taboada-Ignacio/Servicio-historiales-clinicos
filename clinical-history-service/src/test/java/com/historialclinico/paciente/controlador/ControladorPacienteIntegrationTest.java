@@ -27,7 +27,7 @@ class ControladorPacienteIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
-    void realizaCrudCompletoYAislaPacientesPorProfesional() throws Exception {
+    void actualizaAislaYPreservaElPacienteSinBorradoFisico() throws Exception {
         String respuesta = mockMvc.perform(post("/api/v1/profesionales/10/pacientes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(solicitud("Ana", "Pérez", "30111222")))
@@ -53,10 +53,10 @@ class ControladorPacienteIntegrationTest {
                 .andExpect(jsonPath("$.nombre").value("Ana María"));
 
         mockMvc.perform(delete("/api/v1/profesionales/10/pacientes/{idPaciente}", idPaciente))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isConflict());
 
         mockMvc.perform(get("/api/v1/profesionales/10/pacientes/{idPaciente}", idPaciente))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isOk());
     }
 
     @Test

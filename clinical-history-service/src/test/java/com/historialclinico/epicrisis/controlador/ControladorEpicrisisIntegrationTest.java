@@ -25,6 +25,40 @@ class ControladorEpicrisisIntegrationTest {
     private MockMvc mockMvc;
 
     @Test
+    void rectificaSinSobrescribirLaAuditoriaYRechazaVersionDesactualizada() throws Exception {
+        long paciente = crearPaciente(75, "Lucía", "Méndez", "38999111");
+        String creada = mockMvc.perform(post("/api/v1/profesionales/75/pacientes/{idPaciente}/epicrisis", paciente)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"observaciones\":\"Texto original\"}"))
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.versionClinica").value(1))
+                .andReturn().getResponse().getContentAsString();
+        long epicrisis = ((Number) JsonPath.read(creada, "$.id")).longValue();
+        String rectificacion = """
+                {"rectificacion":{"versionEsperada":1,"tipoMotivo":"ERROR_TRANSCRIPCION",
+                "motivo":"Se corrige un error de transcripción comprobado"},"observaciones":"Texto rectificado"}
+                """;
+        mockMvc.perform(post("/api/v1/profesionales/75/pacientes/{paciente}/epicrisis/{epicrisis}/rectificaciones",
+                        paciente, epicrisis).header("X-Professional-Name", "Profesional de prueba")
+                        .header("X-Professional-License", "MP 1234").header("X-Device-Id", "equipo-prueba")
+                        .contentType(MediaType.APPLICATION_JSON).content(rectificacion))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.observaciones").value("Texto rectificado"))
+                .andExpect(jsonPath("$.versionClinica").value(2)).andExpect(jsonPath("$.estadoRegistro").value("RECTIFICADO"));
+        mockMvc.perform(get("/api/v1/profesionales/75/pacientes/{paciente}/epicrisis/{epicrisis}/auditoria",
+                        paciente, epicrisis)).andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].antes.observaciones").value("Texto original"))
+                .andExpect(jsonPath("$[0].despues.observaciones").value("Texto rectificado"))
+                .andExpect(jsonPath("$[0].integridadValida").value(true));
+        mockMvc.perform(post("/api/v1/profesionales/75/pacientes/{paciente}/epicrisis/{epicrisis}/rectificaciones",
+                        paciente, epicrisis).contentType(MediaType.APPLICATION_JSON).content(rectificacion))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get("/api/v1/profesionales/76/pacientes/{paciente}/epicrisis/{epicrisis}/auditoria",
+                        paciente, epicrisis)).andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/v1/profesionales/75/pacientes/{paciente}/epicrisis/{epicrisis}/informe-auditoria",
+                        paciente, epicrisis)).andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("attachment")))
+                .andExpect(jsonPath("$.integridadCadenaValida").value(true));
+    }
+
+    @Test
     void registraYListaEpicrisisDelPaciente() throws Exception {
         long idPaciente = crearPaciente(70, "Elena", "Ruiz", "35111222");
         long[] ficha = crearFicha(70);
