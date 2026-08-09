@@ -14,6 +14,8 @@ public interface RepositorioEpicrisis extends JpaRepository<Epicrisis, Long> {
     List<Epicrisis> findAllByPacienteIdAndPacienteIdProfesionalOrderByFechaHoraDesc(
             Long idPaciente, Long idProfesional
     );
+    boolean existsByIdAndPacienteIdAndPacienteIdProfesional(Long id, Long idPaciente, Long idProfesional);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from Epicrisis e where e.id = :id and e.paciente.id = :idPaciente and e.paciente.idProfesional = :idProfesional")
     Optional<Epicrisis> buscarParaRectificar(@Param("id") Long id, @Param("idPaciente") Long idPaciente,

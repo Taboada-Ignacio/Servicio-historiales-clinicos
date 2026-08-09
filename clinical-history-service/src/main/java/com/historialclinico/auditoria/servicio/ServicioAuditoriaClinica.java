@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Service
@@ -40,7 +41,9 @@ public class ServicioAuditoriaClinica {
             String hashAntes = cifrado.hash(jsonAntes); String hashDespues = cifrado.hash(jsonDespues);
             String anterior = repositorio.findFirstByTipoRegistroAndIdRegistroOrderByIdDesc(tipo, idRegistro)
                     .map(AuditoriaRectificacionClinica::getHashCadena).orElse(null);
-            Instant fecha = Instant.now();
+            // PostgreSQL persiste TIMESTAMP WITH TIME ZONE con precisión de microsegundos. La fecha debe
+            // normalizarse antes de firmar para reconstruir exactamente el mismo material al verificarla.
+            Instant fecha = Instant.now().truncatedTo(ChronoUnit.MICROS);
             var contexto = proveedorContexto.obtener(idProfesional);
             String material = materialCadena(anterior, tipo, idRegistro, idPaciente, idProfesional, versionAnterior,
                     versionNueva, motivo.tipoMotivo().name(), motivo.motivo().trim(), fecha, hashAntes, hashDespues,

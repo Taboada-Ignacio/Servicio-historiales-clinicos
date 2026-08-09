@@ -7,6 +7,7 @@ import com.historialclinico.fichamedica.modelo.TipoOpcion;
 import com.historialclinico.fichamedica.repositorio.RepositorioFichaMedica;
 import com.historialclinico.excepcion.ExcepcionReglaNegocio;
 import com.historialclinico.excepcion.ExcepcionRecursoNoEncontrado;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,7 +57,15 @@ public class ServicioFichaMedica {
     @Transactional
     public void eliminar(Long idProfesional, Long idFicha) {
         FichaMedica ficha = buscarFichaDelProfesional(idProfesional, idFicha);
-        repositorio.delete(ficha);
+        try {
+            // Fuerza el DELETE dentro de este método para poder convertir una referencia clínica
+            // existente en una respuesta de negocio, en lugar de dejar que falle al confirmar la transacción.
+            repositorio.delete(ficha);
+            repositorio.flush();
+        } catch (DataIntegrityViolationException excepcion) {
+            throw new ExcepcionReglaNegocio(
+                    "La ficha médica no puede eliminarse porque ya fue utilizada en la historia clínica");
+        }
     }
 
     private FichaMedica buscarFichaDelProfesional(Long idProfesional, Long idFicha) {

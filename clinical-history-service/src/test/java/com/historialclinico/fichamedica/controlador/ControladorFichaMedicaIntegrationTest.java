@@ -103,6 +103,38 @@ class ControladorFichaMedicaIntegrationTest {
     }
 
     @Test
+    void eliminaPlantillaUtilizadaSinPerderLaInstanciaClinica() throws Exception {
+        String plantilla = mockMvc.perform(post("/api/v1/profesionales/28/fichas-medicas")
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"nombre":"Control descartable","descripcion":"Plantilla original","detalles":[{
+                          "titulo":"Evaluación","orden":0,"campos":[{"titulo":"Dolor","orden":0,
+                          "opciones":[{"tipo":"ENTRADA","orden":0}]}]}]}
+                        """))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long idFicha = ((Number) com.jayway.jsonpath.JsonPath.read(plantilla, "$.id")).longValue();
+        long idOpcion = ((Number) com.jayway.jsonpath.JsonPath.read(
+                plantilla, "$.detalles[0].campos[0].opciones[0].id")).longValue();
+
+        String paciente = mockMvc.perform(post("/api/v1/profesionales/28/pacientes")
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                        {"nombre":"Ana","apellido":"Prueba","dni":"38111228","fechaNacimiento":"1990-01-01",
+                         "sexo":"FEMENINO","fichas":[{"idFichaMedica":%d,
+                         "respuestas":[{"idOpcion":%d,"valor":"Dolor leve"}]}]}
+                        """.formatted(idFicha, idOpcion)))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        long idPaciente = ((Number) com.jayway.jsonpath.JsonPath.read(paciente, "$.id")).longValue();
+
+        mockMvc.perform(delete("/api/v1/profesionales/28/fichas-medicas/{idFicha}", idFicha))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/profesionales/28/pacientes/{idPaciente}", idPaciente))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fichas[0].nombreFicha").value("Control descartable"))
+                .andExpect(jsonPath("$.fichas[0].respuestas[0].tituloDetalle").value("Evaluación"))
+                .andExpect(jsonPath("$.fichas[0].respuestas[0].tituloCampo").value("Dolor"))
+                .andExpect(jsonPath("$.fichas[0].respuestas[0].valor").value("Dolor leve"));
+    }
+
+    @Test
     void creaCampoSiNoConOpcionesAdicionales() throws Exception {
         mockMvc.perform(post("/api/v1/profesionales/27/fichas-medicas")
                         .contentType(MediaType.APPLICATION_JSON)

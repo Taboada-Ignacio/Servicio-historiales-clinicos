@@ -133,15 +133,11 @@ public class ServicioEpicrisis {
         String observaciones = epicrisis.getObservaciones();
         if (!anular) {
             observaciones = normalizarObservaciones(solicitud.observaciones());
-            boolean conservarFicha = ficha != null && ficha.getId().equals(solicitud.idFichaSeguimiento())
-                    && solicitud.respuestasFichaSeguimiento() == null;
-            if (!conservarFicha) {
-                ficha = solicitud.idFichaSeguimiento() == null ? null
-                        : repositorioFichas.buscarPorIdYProfesional(solicitud.idFichaSeguimiento(), idProfesional)
-                        .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Ficha médica de seguimiento no encontrada"));
-                completada = ficha == null ? null : construirFichaCompletada(ficha, solicitud.respuestasFichaSeguimiento());
-                if (completada != null) epicrisis.getPaciente().asignarFicha(completada);
-            }
+            ficha = solicitud.idFichaSeguimiento() == null ? null
+                    : repositorioFichas.buscarPorIdYProfesional(solicitud.idFichaSeguimiento(), idProfesional)
+                    .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Ficha médica de seguimiento no encontrada"));
+            completada = ficha == null ? null : construirFichaCompletada(ficha, solicitud.respuestasFichaSeguimiento());
+            if (completada != null) epicrisis.getPaciente().asignarFicha(completada);
         }
         int versionAnterior = epicrisis.getVersionClinica();
         epicrisis.rectificar(observaciones, ficha, completada, anular);
@@ -163,7 +159,7 @@ public class ServicioEpicrisis {
     }
 
     private void verificarExistencia(Long idProfesional, Long idPaciente, Long idEpicrisis) {
-        if (repositorio.buscarParaRectificar(idEpicrisis, idPaciente, idProfesional).isEmpty())
+        if (!repositorio.existsByIdAndPacienteIdAndPacienteIdProfesional(idEpicrisis, idPaciente, idProfesional))
             throw new ExcepcionRecursoNoEncontrado("Epicrisis no encontrada");
     }
 
@@ -185,11 +181,19 @@ public class ServicioEpicrisis {
     private Object snapshotFicha(FichaPaciente ficha) {
         if (ficha == null) return null;
         Map<String, Object> datos = new LinkedHashMap<>();
-        datos.put("id", ficha.getId()); datos.put("idPlantilla", ficha.getFichaMedica().getId());
-        datos.put("nombrePlantilla", ficha.getFichaMedica().getNombre()); datos.put("fechaAsignacion", ficha.getFechaAsignacion());
+        datos.put("id", ficha.getId()); datos.put("idPlantillaOrigen", ficha.getIdPlantillaOrigen());
+        datos.put("nombre", ficha.getNombreFicha()); datos.put("descripcion", ficha.getDescripcionFicha());
+        datos.put("versionPlantillaOrigen", ficha.getVersionPlantilla()); datos.put("fechaAsignacion", ficha.getFechaAsignacion());
         datos.put("respuestas", ficha.getRespuestas().stream().map(r -> {
-            Map<String, Object> respuesta = new LinkedHashMap<>(); respuesta.put("idOpcion", r.getOpcion().getId());
-            respuesta.put("valor", r.getValor()); respuesta.put("seleccionada", r.getSeleccionada()); return respuesta;
+            Map<String, Object> respuesta = new LinkedHashMap<>(); respuesta.put("idOpcionOrigen", r.getIdOpcionOrigen());
+            respuesta.put("tituloDetalle", r.getTituloDetalle()); respuesta.put("descripcionDetalle", r.getDescripcionDetalle());
+            respuesta.put("ordenDetalle", r.getOrdenDetalle()); respuesta.put("tituloCampo", r.getTituloCampo());
+            respuesta.put("descripcionCampo", r.getDescripcionCampo()); respuesta.put("ordenCampo", r.getOrdenCampo());
+            respuesta.put("permiteSeleccionMultiple", r.isPermiteSeleccionMultiple());
+            respuesta.put("tituloOpcion", r.getTituloOpcion()); respuesta.put("tipoOpcion", r.getTipoOpcion());
+            respuesta.put("descripcionOpcion", r.getDescripcionOpcion()); respuesta.put("ordenOpcion", r.getOrdenOpcion());
+            respuesta.put("grupoExclusion", r.getGrupoExclusion()); respuesta.put("valor", r.getValor());
+            respuesta.put("seleccionada", r.getSeleccionada()); return respuesta;
         }).toList());
         return datos;
     }
@@ -210,8 +214,8 @@ public class ServicioEpicrisis {
 
     private RespuestaFichaClinica convertirFicha(FichaPaciente ficha) {
         if (ficha == null) return null;
-        return new RespuestaFichaClinica(ficha.getFichaMedica().getId(), ficha.getFichaMedica().getNombre(),
+        return new RespuestaFichaClinica(ficha.getIdPlantillaOrigen(), ficha.getNombreFicha(),
                 ficha.getRespuestas().stream().map(r -> new RespuestaFichaClinica.Respuesta(
-                        r.getOpcion().getId(), r.getValor(), r.getSeleccionada())).toList());
+                        r.getIdOpcionOrigen(), r.getValor(), r.getSeleccionada())).toList());
     }
 }

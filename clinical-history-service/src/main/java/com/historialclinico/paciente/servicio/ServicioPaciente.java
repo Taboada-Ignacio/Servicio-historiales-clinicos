@@ -89,13 +89,16 @@ public class ServicioPaciente {
                 && !idsRecibidos.contains(ficha.getId()));
         solicitudes.stream().filter(s -> s.idFichaPaciente() != null).forEach(solicitud -> {
             FichaPaciente fichaPaciente = existentes.get(solicitud.idFichaPaciente());
-            if (!fichaPaciente.getFichaMedica().getId().equals(solicitud.idFichaMedica()))
+            if (!fichaPaciente.getIdPlantillaOrigen().equals(solicitud.idFichaMedica()))
                 throw new ExcepcionReglaNegocio("La ficha médica informada no corresponde a la ficha del paciente");
+            FichaMedica plantilla = repositorioFichas.buscarPorIdYProfesional(
+                    solicitud.idFichaMedica(), paciente.getIdProfesional())
+                    .orElseThrow(() -> new ExcepcionRecursoNoEncontrado("Ficha médica no encontrada"));
             Map<Long, SolicitudPaciente.SolicitudRespuesta> respuestas = mapearYValidarRespuestas(
-                    fichaPaciente.getFichaMedica(), solicitud.respuestas());
+                    plantilla, solicitud.respuestas());
             fichaPaciente.getRespuestas().forEach(respuesta -> {
-                var nueva = respuestas.get(respuesta.getOpcion().getId());
-                String valor = respuesta.getOpcion().getTipo() == TipoOpcion.ENTRADA
+                var nueva = respuestas.get(respuesta.getIdOpcionOrigen());
+                String valor = respuesta.getTipoOpcion() == TipoOpcion.ENTRADA
                         && (nueva.valor() == null || nueva.valor().isBlank()) ? "No aplica" : normalizarOpcional(nueva.valor());
                 respuesta.actualizar(valor, nueva.seleccionada());
             });
@@ -205,12 +208,11 @@ public class ServicioPaciente {
                 paciente.getFichasAsignadas().stream()
                         .filter(ficha -> ficha.getOrigen() == OrigenFichaPaciente.DIRECTA)
                         .map(ficha -> new RespuestaPaciente.RespuestaFichaPaciente(
-                        ficha.getId(), ficha.getFichaMedica().getId(), ficha.getFichaMedica().getNombre(),
+                        ficha.getId(), ficha.getIdPlantillaOrigen(), ficha.getNombreFicha(),
                         ficha.getFechaAsignacion(), ficha.getRespuestas().stream().map(respuesta ->
-                                new RespuestaPaciente.RespuestaFicha(respuesta.getId(), respuesta.getOpcion().getId(),
-                                        respuesta.getOpcion().getCampo().getDetalle().getTitulo(),
-                                        respuesta.getOpcion().getCampo().getTitulo(),
-                                        respuesta.getOpcion().getTitulo(), respuesta.getOpcion().getTipo().name(),
+                                new RespuestaPaciente.RespuestaFicha(respuesta.getId(), respuesta.getIdOpcionOrigen(),
+                                        respuesta.getTituloDetalle(), respuesta.getTituloCampo(),
+                                        respuesta.getTituloOpcion(), respuesta.getTipoOpcion().name(),
                                         respuesta.getValor(), respuesta.getSeleccionada())).toList())).toList());
     }
 }

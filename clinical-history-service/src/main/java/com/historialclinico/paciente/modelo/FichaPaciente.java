@@ -30,9 +30,17 @@ public class FichaPaciente {
     @JoinColumn(name = "id_paciente", nullable = false)
     private Paciente paciente;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "id_ficha_medica", nullable = false)
-    private FichaMedica fichaMedica;
+    @Column(name = "id_plantilla_origen", nullable = false)
+    private Long idPlantillaOrigen;
+
+    @Column(name = "nombre_ficha", nullable = false, length = 120)
+    private String nombreFicha;
+
+    @Column(name = "descripcion_ficha", length = 500)
+    private String descripcionFicha;
+
+    @Column(name = "version_plantilla", nullable = false)
+    private long versionPlantilla;
 
     @Column(name = "fecha_asignacion", nullable = false, updatable = false)
     private Instant fechaAsignacion;
@@ -51,7 +59,10 @@ public class FichaPaciente {
     }
 
     public FichaPaciente(FichaMedica fichaMedica, OrigenFichaPaciente origen) {
-        this.fichaMedica = fichaMedica;
+        this.idPlantillaOrigen = fichaMedica.getId();
+        this.nombreFicha = fichaMedica.getNombre();
+        this.descripcionFicha = fichaMedica.getDescripcion();
+        this.versionPlantilla = fichaMedica.getVersion();
         this.origen = origen;
         this.fechaAsignacion = Instant.now();
     }
@@ -64,7 +75,10 @@ public class FichaPaciente {
     }
 
     public Long getId() { return id; }
-    public FichaMedica getFichaMedica() { return fichaMedica; }
+    public Long getIdPlantillaOrigen() { return idPlantillaOrigen; }
+    public String getNombreFicha() { return nombreFicha; }
+    public String getDescripcionFicha() { return descripcionFicha; }
+    public long getVersionPlantilla() { return versionPlantilla; }
     public Instant getFechaAsignacion() { return fechaAsignacion; }
     public OrigenFichaPaciente getOrigen() { return origen; }
     public List<RespuestaCampo> getRespuestas() { return respuestas; }
