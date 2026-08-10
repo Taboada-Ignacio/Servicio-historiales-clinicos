@@ -45,6 +45,9 @@ app:
     claim-nombre-profesional: ${PROFESSIONAL_NAME_CLAIM:professional_name}
     claim-matricula-profesional: ${PROFESSIONAL_LICENSE_CLAIM:professional_license}
     audiencia: ${JWT_AUDIENCE:clinical-history-service}
+    profesional-local-id: ${LOCAL_PROFESSIONAL_ID:1}
+    profesional-local-nombre: ${LOCAL_PROFESSIONAL_NAME:Profesional local}
+    profesional-local-matricula: ${LOCAL_PROFESSIONAL_LICENSE:LOCAL}
   auditoria:
     clave-base64: ${AUDIT_ENCRYPTION_KEY}
     retencion-anios: ${AUDIT_RETENTION_YEARS:10}

@@ -7,6 +7,7 @@ import './epicrisis.css'
 import './edicionPaciente.css'
 import './tratamientos.css'
 import './historiasClinicas.css'
+import './exportacionHistoriaClinica.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

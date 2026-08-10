@@ -31,6 +31,9 @@ services:
       SECURITY_MODE: ${SECURITY_MODE:-local}
       JWT_ISSUER_URI: ${JWT_ISSUER_URI:-}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-clinical-history-service}
+      LOCAL_PROFESSIONAL_ID: ${LOCAL_PROFESSIONAL_ID:-1}
+      LOCAL_PROFESSIONAL_NAME: ${LOCAL_PROFESSIONAL_NAME:-Profesional local}
+      LOCAL_PROFESSIONAL_LICENSE: ${LOCAL_PROFESSIONAL_LICENSE:-LOCAL}
     ports:
       - "8080:8080"
     depends_on:

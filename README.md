@@ -82,6 +82,7 @@ El frontend incluye actualmente:
 - Módulo de pacientes habilitado, con alta, consulta, edición, eliminación y asignación de fichas.
 - Módulo de epicrisis habilitado, con ficha de seguimiento opcional.
 - Módulo de tratamientos habilitado, con alta, primera sesión opcional y continuación de tratamientos pendientes.
+- Módulo de exportación de historia clínica completa en PDF, Word (DOCX), CSV y XLSX, con motivo, hash SHA-256 y trazabilidad.
 - Selección temporal del profesional mediante su identificador.
 - Listado de plantillas del profesional.
 - Creación y edición de detalles, campos y opciones anidadas.
@@ -398,11 +399,11 @@ fichamedica/
 excepcion/       errores de negocio y tratamiento centralizado
 ```
 
-Los controladores conservan temporalmente `idProfesional` en la ruta. En modo `jwt`, el servicio obtiene la identidad de los claims firmados y exige que coincida con la ruta; en modo `local` se mantiene compatibilidad de desarrollo. Véase la guía de integración enlazada al inicio.
+Los controladores existentes conservan temporalmente `idProfesional` en la ruta. En modo `jwt`, el servicio obtiene la identidad de los claims firmados y exige que coincida con la ruta; en modo `local` se mantiene compatibilidad de desarrollo. La exportación nueva no acepta ese identificador: siempre lo resuelve desde la identidad autenticada. Véanse [la guía de integración](docs/INTEGRACION_USUARIOS_Y_RECTIFICACIONES.md) y [la documentación de exportación](docs/EXPORTACION_HISTORIA_CLINICA.md).
 
 ## Índice de endpoints del servicio
 
-La URL local del microservicio es `http://localhost:8080`. Actualmente expone dieciséis endpoints funcionales, agrupados en cuatro recursos:
+La URL local del microservicio es `http://localhost:8080`. Los endpoints funcionales se agrupan por recurso:
 
 | Recurso | Método | Ruta |
 |---|---|---|
@@ -428,6 +429,8 @@ La URL local del microservicio es `http://localhost:8080`. Actualmente expone di
 | Tratamientos | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos/{idTratamiento}/rectificaciones` |
 | Sesiones | `POST` | `/api/v1/profesionales/{idProfesional}/pacientes/{idPaciente}/tratamientos/{idTratamiento}/sesiones/{idSesion}/rectificaciones` |
 | Tratamientos/sesiones | `GET` | Los mismos recursos terminados en `/auditoria` o `/informe-auditoria` |
+| Exportación | `GET` | `/api/pacientes` (pacientes del profesional autenticado) |
+| Exportación | `POST` | `/api/pacientes/{pacienteId}/historia-clinica/exportar` |
 
 Además, Spring Boot Actuator y Springdoc exponen endpoints operativos:
 

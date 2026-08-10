@@ -1,0 +1,47 @@
+.formulario-exportacion {
+  display: grid;
+  gap: 18px;
+  max-width: 860px;
+  margin-top: 28px;
+}
+
+.configuracion-exportacion .titulo-paso {
+  margin-bottom: 16px;
+}
+
+.detalle-motivo-exportacion {
+  display: block;
+  margin-top: 16px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.detalle-motivo-exportacion span,
+.detalle-motivo-exportacion small {
+  color: #83908c;
+  font-weight: 400;
+}
+
+.detalle-motivo-exportacion textarea {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  border: 1px solid #cedbd6;
+  border-radius: 9px;
+  background: #fbfcfc;
+  padding: 11px 12px;
+  color: #20302d;
+  resize: vertical;
+  outline: none;
+}
+
+.detalle-motivo-exportacion textarea:focus {
+  border-color: #4fa987;
+  box-shadow: 0 0 0 3px rgba(79, 169, 135, .12);
+}
+
+.detalle-motivo-exportacion small {
+  display: block;
+  margin-top: 5px;
+  text-align: right;
+}

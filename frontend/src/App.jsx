@@ -3,6 +3,7 @@ import { apiFichasMedicas } from './api/fichasMedicas.js'
 import { apiPacientes } from './api/pacientes.js'
 import { apiEpicrisis } from './api/epicrisis.js'
 import { apiTratamientos } from './api/tratamientos.js'
+import { apiExportacionHistoriaClinica } from './api/exportacionHistoriaClinica.js'
 
 const modulos = [
   { icono: 'FM', titulo: 'Fichas médicas', descripcion: 'Diseñá y administrá plantillas clínicas.', disponible: true },
@@ -10,6 +11,7 @@ const modulos = [
   { icono: 'HC', titulo: 'Historias clínicas', descripcion: 'Evoluciones y antecedentes por paciente.', disponible: true, destino: 'historias' },
   { icono: 'TR', titulo: 'Tratamientos', descripcion: 'Sesiones, avances y observaciones.', disponible: true, destino: 'tratamientos' },
   { icono: 'EP', titulo: 'Epicrisis', descripcion: 'Síntesis de episodios clínicos.', disponible: true, destino: 'epicrisis' },
+  { icono: 'EX', titulo: 'Exportar historia clínica', descripcion: 'Descargá la historia completa en PDF, Word, CSV o XLSX.', disponible: true, destino: 'exportar-historia' },
 ]
 
 const nuevaOpcion = (orden = 0) => ({ titulo: '', tipo: 'SELECCION', descripcion: '', orden, grupoExclusion: '' })
@@ -17,6 +19,9 @@ const nuevoCampo = (orden = 0) => ({ titulo: '', descripcion: '', orden, permite
 const nuevoDetalle = (orden = 0) => ({ titulo: '', descripcion: '', orden, campos: [nuevoCampo()] })
 const fichaVacia = () => ({ nombre: '', descripcion: '', detalles: [nuevoDetalle()] })
 const pacienteVacio = () => ({ nombre: '', apellido: '', dni: '', telefono: '', fechaNacimiento: '', sexo: '' })
+const capitalizarPalabras = (valor) => valor
+  .toLocaleLowerCase('es-AR')
+  .replace(/(^|[^\p{L}])(\p{L})/gu, (_, separador, letra) => `${separador}${letra.toLocaleUpperCase('es-AR')}`)
 
 const vistaDesdeRuta = () => {
   if (window.location.pathname.includes('fichas-medicas')) return 'fichas'
@@ -24,6 +29,7 @@ const vistaDesdeRuta = () => {
   if (window.location.pathname.includes('historias-clinicas')) return 'historias'
   if (window.location.pathname.includes('epicrisis')) return 'epicrisis'
   if (window.location.pathname.includes('tratamientos')) return 'tratamientos'
+  if (window.location.pathname.includes('exportar-historia-clinica')) return 'exportar-historia'
   return 'inicio'
 }
 
@@ -31,7 +37,7 @@ export default function App() {
   const [vista, setVista] = useState(vistaDesdeRuta)
 
   const navegar = (destino) => {
-    const rutas = { fichas: '/fichas-medicas', pacientes: '/pacientes', historias: '/historias-clinicas', epicrisis: '/epicrisis', tratamientos: '/tratamientos', inicio: '/' }
+    const rutas = { fichas: '/fichas-medicas', pacientes: '/pacientes', historias: '/historias-clinicas', epicrisis: '/epicrisis', tratamientos: '/tratamientos', 'exportar-historia': '/exportar-historia-clinica', inicio: '/' }
     const ruta = rutas[destino]
     window.history.pushState({}, '', ruta)
     setVista(destino)
@@ -58,8 +64,77 @@ export default function App() {
       {vista === 'historias' && <GestionHistoriasClinicas onVolver={() => navegar('inicio')} />}
       {vista === 'epicrisis' && <GestionEpicrisis onVolver={() => navegar('inicio')} />}
       {vista === 'tratamientos' && <GestionTratamientos onVolver={() => navegar('inicio')} />}
+      {vista === 'exportar-historia' && <ExportarHistoriaClinica onVolver={() => navegar('inicio')} />}
     </div>
   )
+}
+
+function ExportarHistoriaClinica({ onVolver }) {
+  const [pantalla, setPantalla] = useState('buscar')
+  const [pacientes, setPacientes] = useState([])
+  const [busqueda, setBusqueda] = useState('')
+  const [seleccionado, setSeleccionado] = useState(null)
+  const [buscado, setBuscado] = useState(false)
+  const [formato, setFormato] = useState('PDF')
+  const [motivo, setMotivo] = useState('SOLICITUD_DEL_PACIENTE')
+  const [detalleMotivo, setDetalleMotivo] = useState('')
+  const [cargando, setCargando] = useState(false)
+  const [mensaje, setMensaje] = useState(null)
+
+  const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
+  const filtrados = pacientes.filter((paciente) =>
+    normalizar(`${paciente.apellido} ${paciente.nombre}`).includes(normalizar(busqueda)))
+
+  const buscar = async () => {
+    if (!busqueda.trim()) return
+    setCargando(true); setMensaje(null); setSeleccionado(null)
+    try { setPacientes(await apiExportacionHistoriaClinica.listarPacientes()); setBuscado(true) }
+    catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const confirmarPaciente = () => {
+    if (!seleccionado) return
+    if (!window.confirm(`¿Confirmás que querés exportar la historia clínica de ${seleccionado.apellido}, ${seleccionado.nombre}?`)) return
+    setPantalla('configurar'); setMensaje(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const exportar = async (evento) => {
+    evento.preventDefault(); setCargando(true); setMensaje(null)
+    try {
+      const nombre = await apiExportacionHistoriaClinica.exportar(seleccionado.id, {
+        formato, motivo, detalleMotivo: detalleMotivo.trim() || null,
+      })
+      setMensaje({ tipo: 'exito', texto: `La historia clínica se exportó correctamente como ${nombre}.` })
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const volver = pantalla === 'buscar' ? onVolver : () => {
+    setPantalla('buscar'); setMensaje(null); setSeleccionado(null)
+  }
+
+  return <main className="contenido pagina-exportacion">
+    <button className="volver" onClick={volver}>← {pantalla === 'buscar' ? 'Volver al inicio' : 'Volver a buscar pacientes'}</button>
+    <div className="cabecera-pagina"><div><p className="sobrelinea">Portabilidad clínica</p><h1>Exportar historia clínica</h1><p>{pantalla === 'buscar' ? 'Buscá y seleccioná al paciente cuya historia querés descargar.' : 'Elegí el formato y registrá el motivo de la exportación.'}</p></div></div>
+    {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
+    {pantalla === 'buscar' && <section className="panel buscador-paciente-epicrisis">
+      <div className="titulo-paso"><h2>Buscar paciente</h2><p>Solo se muestran pacientes asociados al profesional autenticado.</p></div>
+      <div className="fila-busqueda-epicrisis"><label className="buscador-epicrisis">Apellido - nombre<input autoFocus type="search" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscar() } }} placeholder="Ej. Pérez - Ana" /></label><button type="button" className="boton-principal" onClick={buscar} disabled={cargando || !busqueda.trim()}>{cargando ? 'Buscando…' : 'Buscar'}</button></div>
+      <div className="resultados-pacientes-epicrisis">{!buscado ? <p>Los pacientes encontrados aparecerán aquí.</p> : !filtrados.length ? <p>No se encontraron pacientes.</p> : filtrados.map((paciente) => <label className={seleccionado?.id === paciente.id ? 'seleccionado' : ''} key={paciente.id}><input type="radio" name="paciente-exportacion" checked={seleccionado?.id === paciente.id} onChange={() => setSeleccionado(paciente)} /><span><strong>{paciente.apellido}, {paciente.nombre}</strong><small>DNI {paciente.dni}</small></span></label>)}</div>
+      <div className="confirmar-paciente-epicrisis"><span>{seleccionado ? `Seleccionado: ${seleccionado.apellido}, ${seleccionado.nombre}` : 'Seleccioná un paciente para continuar.'}</span><button type="button" className="boton-principal" disabled={!seleccionado || cargando} onClick={confirmarPaciente}>Confirmar paciente</button></div>
+    </section>}
+    {pantalla === 'configurar' && <form className="formulario-exportacion" onSubmit={exportar}>
+      <section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Historia clínica de</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section>
+      <section className="panel configuracion-exportacion"><div className="titulo-paso"><h2>Datos de la exportación</h2><p>La descarga es inmediata y quedará registrada con su hash SHA-256.</p></div>
+        <div className="grilla-formulario"><label>Formato<select required value={formato} onChange={(e) => setFormato(e.target.value)}><option value="PDF">PDF</option><option value="DOCX">Word (DOCX)</option><option value="CSV">CSV</option><option value="XLSX">Excel (XLSX)</option></select></label><label>Motivo<select required value={motivo} onChange={(e) => setMotivo(e.target.value)}><option value="SOLICITUD_DEL_PACIENTE">Solicitud del paciente</option><option value="CONTINUIDAD_DE_TRATAMIENTO">Continuidad de tratamiento</option><option value="DERIVACION">Derivación</option><option value="SEGUNDA_OPINION">Segunda opinión</option><option value="TRAMITE_ADMINISTRATIVO">Trámite administrativo</option><option value="OTRO">Otro</option></select></label></div>
+        <label className="detalle-motivo-exportacion">Detalle del motivo <span>(opcional)</span><textarea maxLength="500" rows="4" value={detalleMotivo} onChange={(e) => setDetalleMotivo(e.target.value)} placeholder="Ej. Copia solicitada por el paciente" /><small>{detalleMotivo.length} / 500 caracteres</small></label>
+        <button className="boton-principal" disabled={cargando}>{cargando ? 'Generando archivo…' : `Exportar como ${formato}`}</button>
+      </section>
+    </form>}
+  </main>
 }
 
 function GestionHistoriasClinicas({ onVolver }) {
@@ -674,7 +749,11 @@ function GestionPacientes({ onVolver }) {
     }
     setCargando(true); setMensaje(null)
     try {
-      const solicitud = { ...paciente }
+      const solicitud = {
+        ...paciente,
+        nombre: capitalizarPalabras(paciente.nombre),
+        apellido: capitalizarPalabras(paciente.apellido),
+      }
       if (editando) solicitud.fichas = fichasEdicion.map((item) => ({
         idFichaPaciente: item.idFichaPaciente,
         idFichaMedica: item.plantilla.id,
@@ -698,8 +777,8 @@ function GestionPacientes({ onVolver }) {
 
   const editar = async (seleccionado) => {
     setPaciente({
-      nombre: seleccionado.nombre,
-      apellido: seleccionado.apellido,
+      nombre: capitalizarPalabras(seleccionado.nombre),
+      apellido: capitalizarPalabras(seleccionado.apellido),
       dni: seleccionado.dni,
       telefono: seleccionado.telefono || '',
       fechaNacimiento: seleccionado.fechaNacimiento,
@@ -835,8 +914,8 @@ function GestionPacientes({ onVolver }) {
             {editando && <button type="button" className="boton-secundario" onClick={volverAlMenu}>Cancelar</button>}
           </div>
           <div className="grilla-formulario">
-            <label>Nombre<input required maxLength="100" value={paciente.nombre} onChange={(e) => setPaciente({ ...paciente, nombre: e.target.value })} /></label>
-            <label>Apellido<input required maxLength="100" value={paciente.apellido} onChange={(e) => setPaciente({ ...paciente, apellido: e.target.value })} /></label>
+            <label>Nombre<input required maxLength="100" value={paciente.nombre} onChange={(e) => setPaciente({ ...paciente, nombre: capitalizarPalabras(e.target.value) })} /></label>
+            <label>Apellido<input required maxLength="100" value={paciente.apellido} onChange={(e) => setPaciente({ ...paciente, apellido: capitalizarPalabras(e.target.value) })} /></label>
             <label>DNI<input required inputMode="numeric" pattern="[0-9]{6,12}" maxLength="12" value={paciente.dni} onChange={(e) => setPaciente({ ...paciente, dni: e.target.value.replace(/\D/g, '') })} /></label>
             <label>Teléfono <span>(opcional, solo números)</span><input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength="30" value={paciente.telefono} onChange={(e) => setPaciente({ ...paciente, telefono: e.target.value.replace(/\D/g, '') })} /></label>
             <label>Fecha de nacimiento<input required type="date" max={new Date().toISOString().slice(0, 10)} value={paciente.fechaNacimiento} onChange={(e) => setPaciente({ ...paciente, fechaNacimiento: e.target.value })} /></label>

@@ -13,11 +13,19 @@ public class ProveedorIdentidadProfesional {
     private final String claimId;
     private final String claimNombre;
     private final String claimMatricula;
+    private final boolean modoLocal;
+    private final IdentidadProfesional identidadLocal;
 
     public ProveedorIdentidadProfesional(@Value("${app.seguridad.claim-id-profesional:professional_id}") String claimId,
             @Value("${app.seguridad.claim-nombre-profesional:professional_name}") String claimNombre,
-            @Value("${app.seguridad.claim-matricula-profesional:professional_license}") String claimMatricula) {
+            @Value("${app.seguridad.claim-matricula-profesional:professional_license}") String claimMatricula,
+            @Value("${app.seguridad.modo:local}") String modo,
+            @Value("${app.seguridad.profesional-local-id:1}") Long idLocal,
+            @Value("${app.seguridad.profesional-local-nombre:Profesional local}") String nombreLocal,
+            @Value("${app.seguridad.profesional-local-matricula:LOCAL}") String matriculaLocal) {
         this.claimId = claimId; this.claimNombre = claimNombre; this.claimMatricula = claimMatricula;
+        this.modoLocal = "local".equalsIgnoreCase(modo);
+        this.identidadLocal = new IdentidadProfesional(idLocal, nombreLocal, matriculaLocal);
     }
 
     public Optional<IdentidadProfesional> obtener() {
@@ -35,5 +43,13 @@ public class ProveedorIdentidadProfesional {
             throw new AccessDeniedException("El token debe identificar el nombre y la matrícula profesional");
         return Optional.of(new IdentidadProfesional(id, nombre, matricula));
     }
+
+    public IdentidadProfesional requerir() {
+        return obtener().orElseGet(() -> {
+            if (modoLocal) return identidadLocal;
+            throw new AccessDeniedException("Se requiere un profesional autenticado");
+        });
+    }
+
     private String texto(Object valor) { return valor == null || String.valueOf(valor).isBlank() ? null : String.valueOf(valor); }
 }

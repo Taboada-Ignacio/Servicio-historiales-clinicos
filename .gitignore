@@ -5,6 +5,7 @@ target/
 *.war
 .mvn/timing.properties
 .m2/
+.tools/
 
 # Node / Vite
 node_modules/
