@@ -9,8 +9,6 @@ import java.time.Instant;
 
 public record RespuestaExportacionHistoriaClinica(
         Long id,
-        Long pacienteId,
-        Long profesionalId,
         MotivoExportacion motivo,
         String detalleMotivo,
         FormatoExportacion formato,
@@ -18,6 +16,5 @@ public record RespuestaExportacionHistoriaClinica(
         FormatoExportacion formatoHistoriaClinica,
         FormatoArchivoFinal formatoArchivoFinal,
         Instant fechaHoraExportacion,
-        String nombreArchivo,
-        String hashArchivo
+        String nombreArchivo
 ) {}

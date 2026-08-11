@@ -116,8 +116,9 @@ class ControladorExportacionHistoriaClinicaIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].formato").value("PDF"))
                 .andExpect(jsonPath("$[1].formato").value("CSV"))
-                .andExpect(jsonPath("$[0].pacienteId").value(paciente.getId()))
-                .andExpect(jsonPath("$[0].hashArchivo").isString());
+                .andExpect(jsonPath("$[0].pacienteId").doesNotExist())
+                .andExpect(jsonPath("$[0].profesionalId").doesNotExist())
+                .andExpect(jsonPath("$[0].hashArchivo").doesNotExist());
     }
 
     @Test
@@ -138,14 +139,14 @@ class ControladorExportacionHistoriaClinicaIntegrationTest {
                         paciente.getId(), exportacion.getId()).with(profesional(PROFESIONAL)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(exportacion.getId()))
-                .andExpect(jsonPath("$.pacienteId").value(paciente.getId()))
-                .andExpect(jsonPath("$.profesionalId").value(PROFESIONAL))
+                .andExpect(jsonPath("$.pacienteId").doesNotExist())
+                .andExpect(jsonPath("$.profesionalId").doesNotExist())
                 .andExpect(jsonPath("$.formato").value("DOCX"))
                 .andExpect(jsonPath("$.motivo").value("DERIVACION"))
                 .andExpect(jsonPath("$.detalleMotivo").value("Continuidad con otro profesional"))
                 .andExpect(jsonPath("$.fechaHoraExportacion").isString())
                 .andExpect(jsonPath("$.nombreArchivo").value(exportacion.getNombreArchivo()))
-                .andExpect(jsonPath("$.hashArchivo").value(exportacion.getHashArchivo()));
+                .andExpect(jsonPath("$.hashArchivo").doesNotExist());
     }
 
     @Test

@@ -138,11 +138,11 @@ public class ServicioExportacionHistoriaClinica {
     }
 
     private RespuestaExportacionHistoriaClinica respuesta(ExportacionHistoriaClinica exportacion) {
-        return new RespuestaExportacionHistoriaClinica(exportacion.getId(), exportacion.getPacienteId(),
-                exportacion.getProfesionalId(), exportacion.getMotivo(), exportacion.getDetalleMotivo(),
+        return new RespuestaExportacionHistoriaClinica(exportacion.getId(),
+                exportacion.getMotivo(), exportacion.getDetalleMotivo(),
                 exportacion.getFormato(), exportacion.getTipoExportacion(), exportacion.getFormatoHistoriaClinica(),
                 exportacion.getFormatoArchivoFinal(), exportacion.getFechaHoraExportacion(),
-                exportacion.getNombreArchivo(), exportacion.getHashArchivo());
+                exportacion.getNombreArchivo());
     }
 
     private void intentarAuditarFallo(Long profesionalId, Long pacienteId, FormatoExportacion formato) {
