@@ -12,6 +12,9 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 @Service
 public class ServicioCifradoAuditoria {
@@ -47,15 +50,31 @@ public class ServicioCifradoAuditoria {
     }
 
     public String hash(String texto) { return HexFormat.of().formatHex(sha256Bytes(texto.getBytes(StandardCharsets.UTF_8))); }
+    public String hash(byte[] contenido) { return HexFormat.of().formatHex(sha256Bytes(contenido)); }
+    public String hash(InputStream contenido) throws IOException {
+        return copiarYHash(contenido, OutputStream.nullOutputStream());
+    }
+    public String copiarYHash(InputStream entrada, OutputStream salida) throws IOException {
+        MessageDigest digest = sha256();
+        byte[] buffer = new byte[16 * 1024];
+        int leidos;
+        while ((leidos = entrada.read(buffer)) != -1) {
+            digest.update(buffer, 0, leidos);
+            salida.write(buffer, 0, leidos);
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
     public String firmaCadena(String texto) {
         try { Mac mac = Mac.getInstance("HmacSHA256"); mac.init(claveIntegridad); return HexFormat.of().formatHex(mac.doFinal(texto.getBytes(StandardCharsets.UTF_8))); }
         catch (Exception ex) { throw new IllegalStateException("No fue posible firmar la cadena de auditoría", ex); }
     }
     private static byte[] sha256Bytes(byte[] valor) {
-        try { return MessageDigest.getInstance("SHA-256").digest(valor); }
+        return sha256().digest(valor);
+    }
+    private static MessageDigest sha256() {
+        try { return MessageDigest.getInstance("SHA-256"); }
         catch (Exception ex) { throw new IllegalStateException(ex); }
     }
     private static byte[] concatenar(byte[] a, byte[] b) { byte[] r = new byte[a.length + b.length]; System.arraycopy(a, 0, r, 0, a.length); System.arraycopy(b, 0, r, a.length, b.length); return r; }
     public record ContenidoCifrado(byte[] contenido, byte[] iv) {}
 }
-

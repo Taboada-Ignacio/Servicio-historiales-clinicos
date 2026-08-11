@@ -31,6 +31,10 @@ public class PdfHistoriaClinicaExporter implements HistoriaClinicaExporter {
         try (var pdf = new PDDocument(); var salida = new ByteArrayOutputStream()) {
             var escritor = new EscritorPdf(pdf);
             escritor.portada(historia);
+            if (!historia.archivosPaciente().isEmpty()) {
+                escritor.seccion("Archivos del paciente", "Documentación asociada directamente al paciente");
+                escritor.archivosAdjuntos(historia.archivosPaciente(), EscritorPdf.MARGEN, EscritorPdf.ANCHO);
+            }
             escritor.seccion("Cronología clínica", "Registros presentados desde el más antiguo al más reciente");
             if (historia.registros().isEmpty()) escritor.aviso("No hay registros clínicos disponibles.");
             for (var registro : historia.registros()) escritor.registro(registro);
@@ -140,8 +144,28 @@ public class PdfHistoriaClinicaExporter implements HistoriaClinicaExporter {
                 textoFluido(campo.valor(), xContenido, anchoContenido, 9.5f, normal, TINTA, 13);
                 y -= 7;
             }
+            archivosAdjuntos(registro.archivosAdjuntos(), xContenido, anchoContenido);
             lineaHorizontal(xContenido, y, MARGEN + ANCHO, BORDE, 0.6f);
             y -= 18;
+        }
+
+        private void archivosAdjuntos(List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos,
+                float x, float ancho) throws IOException {
+            if (archivos.isEmpty()) return;
+            asegurarEspacio(36);
+            texto("ARCHIVOS ADJUNTOS", x, y, ancho, 7.2f, negrita, GRIS, 9);
+            y -= 13;
+            for (var archivo : archivos) {
+                textoFluido(describir(archivo), x, ancho, 9.5f, normal, TINTA, 13);
+                y -= 3;
+            }
+            y -= 4;
+        }
+
+        private String describir(HistoriaClinicaDocumento.ArchivoAdjunto archivo) {
+            String descripcion = archivo.descripcion() == null || archivo.descripcion().isBlank()
+                    ? "" : " — " + archivo.descripcion();
+            return "- " + archivo.nombreOriginal() + " (" + archivo.categoria() + ")" + descripcion;
         }
 
         private void textoFluido(String texto, float x, float ancho, float tamanio, PDFont fuente,

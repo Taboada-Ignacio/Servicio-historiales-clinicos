@@ -14,3 +14,8 @@ app:
   auditoria:
     clave-base64: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     retencion-anios: 10
+  archivos:
+    storage:
+      endpoint: http://localhost:9000
+      access-key: test
+      secret-key: test-secret

@@ -17,6 +17,16 @@ export const apiExportacionHistoriaClinica = {
     if (!respuesta.ok) throw await errorDe(respuesta)
     return respuesta.json()
   },
+  listarExportaciones: async (pacienteId) => {
+    const respuesta = await fetch(`/api/pacientes/${pacienteId}/historia-clinica/exportaciones`)
+    if (!respuesta.ok) throw await errorDe(respuesta)
+    return respuesta.json()
+  },
+  obtenerExportacion: async (pacienteId, exportacionId) => {
+    const respuesta = await fetch(`/api/pacientes/${pacienteId}/historia-clinica/exportaciones/${exportacionId}`)
+    if (!respuesta.ok) throw await errorDe(respuesta)
+    return respuesta.json()
+  },
   exportar: async (pacienteId, datos) => {
     const respuesta = await fetch(`/api/pacientes/${pacienteId}/historia-clinica/exportar`, {
       method: 'POST',

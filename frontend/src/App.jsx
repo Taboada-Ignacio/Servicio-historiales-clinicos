@@ -4,6 +4,7 @@ import { apiPacientes } from './api/pacientes.js'
 import { apiEpicrisis } from './api/epicrisis.js'
 import { apiTratamientos } from './api/tratamientos.js'
 import { apiExportacionHistoriaClinica } from './api/exportacionHistoriaClinica.js'
+import { apiArchivos } from './api/archivos.js'
 
 const modulos = [
   { icono: 'FM', titulo: 'Fichas médicas', descripcion: 'Diseñá y administrá plantillas clínicas.', disponible: true },
@@ -11,7 +12,9 @@ const modulos = [
   { icono: 'HC', titulo: 'Historias clínicas', descripcion: 'Evoluciones y antecedentes por paciente.', disponible: true, destino: 'historias' },
   { icono: 'TR', titulo: 'Tratamientos', descripcion: 'Sesiones, avances y observaciones.', disponible: true, destino: 'tratamientos' },
   { icono: 'EP', titulo: 'Epicrisis', descripcion: 'Síntesis de episodios clínicos.', disponible: true, destino: 'epicrisis' },
+  { icono: 'AR', titulo: 'Archivos clínicos', descripcion: 'Adjuntá y consultá documentación clínica por paciente.', disponible: true, destino: 'archivos' },
   { icono: 'EX', titulo: 'Exportar historia clínica', descripcion: 'Descargá la historia completa en PDF, Word, CSV o XLSX.', disponible: true, destino: 'exportar-historia' },
+  { icono: 'CE', titulo: 'Consultar exportaciones', descripcion: 'Revisá el historial de exportaciones realizadas por paciente.', disponible: true, destino: 'consultar-exportaciones' },
 ]
 
 const nuevaOpcion = (orden = 0) => ({ titulo: '', tipo: 'SELECCION', descripcion: '', orden, grupoExclusion: '' })
@@ -19,6 +22,243 @@ const nuevoCampo = (orden = 0) => ({ titulo: '', descripcion: '', orden, permite
 const nuevoDetalle = (orden = 0) => ({ titulo: '', descripcion: '', orden, campos: [nuevoCampo()] })
 const fichaVacia = () => ({ nombre: '', descripcion: '', detalles: [nuevoDetalle()] })
 const pacienteVacio = () => ({ nombre: '', apellido: '', dni: '', telefono: '', fechaNacimiento: '', sexo: '' })
+const categoriasArchivo = [
+  ['LABORATORIO', 'Laboratorio'], ['INFORME', 'Informe'], ['IMAGEN', 'Imagen'],
+  ['CONSENTIMIENTO', 'Consentimiento'], ['RECETA', 'Receta'], ['ESTUDIO', 'Estudio'], ['OTRO', 'Otro'],
+]
+const extensionesArchivo = ['pdf', 'docx', 'jpg', 'jpeg', 'png']
+const limiteGeneralArchivo = 20 * 1024 * 1024
+const limiteImagenArchivo = 15 * 1024 * 1024
+
+function limiteParaExtension(extension) {
+  return ['jpg', 'jpeg', 'png'].includes(extension) ? limiteImagenArchivo : limiteGeneralArchivo
+}
+
+function etiquetaLimiteParaExtension(extension) {
+  return `${limiteParaExtension(extension) / 1024 / 1024} MB`
+}
+
+function formatearBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function validarArchivoAntesDeEnviar(file) {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  if (!extensionesArchivo.includes(extension)) return 'Solo se permiten PDF, DOCX, JPG/JPEG y PNG.'
+  const limite = limiteParaExtension(extension)
+  if (!file.size) return `“${file.name}” está vacío.`
+  if (file.size > limite) return `“${file.name}” pesa ${formatearBytes(file.size)} y supera el máximo de ${etiquetaLimiteParaExtension(extension)} para archivos ${extension.toUpperCase()}.`
+  return null
+}
+
+async function subirAdjuntosClinicos(adjuntos, subir) {
+  const cargados = []; const fallidos = []; const advertencias = []
+  for (const adjunto of adjuntos) {
+    try {
+      const respuesta = await subir(adjunto)
+      cargados.push(respuesta)
+      if (respuesta.warningStorage) advertencias.push(respuesta.warningStorage)
+      if (respuesta.warningDuplicate) advertencias.push(respuesta.warningDuplicate)
+    } catch (error) { fallidos.push({ adjunto, error: error.message }) }
+  }
+  return { cargados, fallidos, advertencias: [...new Set(advertencias)] }
+}
+
+function combinarResultadosAdjuntos(...resultados) {
+  return {
+    cargados: resultados.flatMap((item) => item.cargados),
+    fallidos: resultados.flatMap((item) => item.fallidos),
+    advertencias: [...new Set(resultados.flatMap((item) => item.advertencias))],
+  }
+}
+
+function AdjuntosClinicosInput({ adjuntos, onChange, titulo = 'Archivos clínicos', descripcion, disabled = false }) {
+  const [error, setError] = useState(null)
+  const agregar = (evento) => {
+    const nuevos = []
+    for (const file of Array.from(evento.target.files || [])) {
+      const validacion = validarArchivoAntesDeEnviar(file)
+      if (validacion) { setError(validacion); continue }
+      const extension = file.name.split('.').pop()?.toLowerCase()
+      nuevos.push({ id: crypto.randomUUID(), file,
+        categoria: ['jpg', 'jpeg', 'png'].includes(extension) ? 'IMAGEN' : 'INFORME', descripcion: '' })
+    }
+    if (nuevos.length) { onChange([...adjuntos, ...nuevos]); setError(null) }
+    evento.target.value = ''
+  }
+  const actualizar = (id, cambios) => onChange(adjuntos.map((item) => item.id === id ? { ...item, ...cambios } : item))
+  return <section className="panel bloque-adjuntos">
+    <div className="encabezado-adjuntos"><div><p className="sobrelinea">Adjuntos opcionales</p><h3>{titulo}</h3><p>{descripcion || 'Podés adjuntar informes, estudios, imágenes, recetas o consentimientos.'}</p></div>
+      <label className="selector-archivos"><input type="file" multiple disabled={disabled}
+        accept=".pdf,.docx,.jpg,.jpeg,.png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
+        onChange={agregar} /><span>＋ Seleccionar archivos</span></label></div>
+    <div className="limites-adjuntos" role="note" aria-label="Límites de tamaño por tipo de archivo"><strong>Límites por archivo</strong><span>PDF <b>20 MB</b></span><span>DOCX <b>20 MB</b></span><span>JPG/JPEG <b>15 MB</b></span><span>PNG <b>15 MB</b></span><small>El límite general es de 20 MB. Todos los archivos serán validados y analizados antes de guardarse.</small></div>
+    {!!adjuntos.length && <div className="lista-adjuntos-seleccionados">{adjuntos.map((item) => <article className="adjunto-seleccionado" key={item.id}>
+      <div className="identidad-adjunto"><strong title={item.file.name}>{item.file.name}</strong><small>{formatearBytes(item.file.size)} · máximo {etiquetaLimiteParaExtension(item.file.name.split('.').pop()?.toLowerCase())}</small></div>
+      <label>Categoría<select value={item.categoria} disabled={disabled} onChange={(e) => actualizar(item.id, { categoria: e.target.value })}>{categoriasArchivo.map(([valor, etiqueta]) => <option value={valor} key={valor}>{etiqueta}</option>)}</select></label>
+      <label>Descripción opcional<input maxLength="1000" value={item.descripcion} disabled={disabled} onChange={(e) => actualizar(item.id, { descripcion: e.target.value })} placeholder="Ej. Informe corregido" /></label>
+      <button type="button" className="quitar-adjunto" aria-label={`Quitar ${item.file.name}`} disabled={disabled} onClick={() => onChange(adjuntos.filter((actual) => actual.id !== item.id))}>×</button>
+    </article>)}</div>}
+    {error && <p className="error-adjuntos" role="alert">{error}</p>}
+  </section>
+}
+
+function ResultadoCargaAdjuntos({ resultado }) {
+  if (!resultado || (!resultado.cargados.length && !resultado.fallidos.length)) return null
+  return <div className={`resultado-adjuntos ${resultado.fallidos.length ? 'con-fallos' : ''}`}>
+    <strong>{resultado.cargados.length} archivo{resultado.cargados.length === 1 ? '' : 's'} adjuntado{resultado.cargados.length === 1 ? '' : 's'}.</strong>
+    {!!resultado.fallidos.length && <><span> {resultado.fallidos.length} no pudieron cargarse:</span><ul className="errores-carga-adjuntos">{resultado.fallidos.map((item) => <li key={item.adjunto.id}><strong>{item.adjunto.file.name}:</strong> {item.error}</li>)}</ul></>}
+    {!!resultado.advertencias.length && <span> {resultado.advertencias.join(' ')}</span>}
+  </div>
+}
+
+async function abrirArchivoEnNuevaPestana(archivo) {
+  const pestana = window.open('about:blank', '_blank')
+  if (!pestana) throw new Error('El navegador bloqueó la pestaña de visualización. Habilitá las ventanas emergentes para este sitio.')
+  pestana.opener = null
+  pestana.document.title = 'Preparando archivo…'
+  pestana.document.body.style.cssText = 'margin:0;min-height:100vh;display:grid;place-items:center;background:#edf2f0;color:#315047;font:600 16px Arial,sans-serif'
+  pestana.document.body.textContent = 'Preparando vista protegida…'
+  try {
+    const contenido = await apiArchivos.obtenerVistaPrevia(archivo.id)
+    const url = URL.createObjectURL(contenido)
+    pestana.location.replace(url)
+    window.setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000)
+  } catch (fallo) {
+    if (!pestana.closed) {
+      pestana.document.title = 'No se pudo visualizar el archivo'
+      pestana.document.body.textContent = fallo.message
+    }
+    throw fallo
+  }
+}
+
+function esImagenClinica(archivo) {
+  const extension = archivo.nombreOriginal?.split('.').pop()?.toLowerCase()
+  return ['jpg', 'jpeg', 'png'].includes(extension)
+}
+
+function etiquetaVisualizacionArchivo(archivo) {
+  return esImagenClinica(archivo) ? 'Visualizar imagen' : 'Abrir en pestaña'
+}
+
+function VisorImagenClinica({ archivo, onCerrar }) {
+  const [url, setUrl] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let activo = true
+    let urlCreada = null
+    const cargar = async () => {
+      try {
+        const contenido = await apiArchivos.obtenerVistaPrevia(archivo.id)
+        if (!activo) return
+        urlCreada = URL.createObjectURL(contenido)
+        setUrl(urlCreada)
+      } catch (fallo) {
+        if (activo) setError(fallo.message)
+      }
+    }
+    cargar()
+    return () => {
+      activo = false
+      if (urlCreada) URL.revokeObjectURL(urlCreada)
+    }
+  }, [archivo.id])
+
+  useEffect(() => {
+    const overflowAnterior = document.body.style.overflow
+    const cerrarConEscape = (evento) => { if (evento.key === 'Escape') onCerrar() }
+    document.body.style.overflow = 'hidden'
+    document.addEventListener('keydown', cerrarConEscape)
+    return () => {
+      document.body.style.overflow = overflowAnterior
+      document.removeEventListener('keydown', cerrarConEscape)
+    }
+  }, [onCerrar])
+
+  return <div className="fondo-visor-imagen" role="presentation" onMouseDown={(evento) => { if (evento.target === evento.currentTarget) onCerrar() }}>
+    <section className="visor-imagen-clinica" role="dialog" aria-modal="true" aria-labelledby="titulo-visor-imagen">
+      <header><div><p className="sobrelinea">Imagen clínica</p><h2 id="titulo-visor-imagen">{archivo.nombreOriginal}</h2><p className="descripcion-visor-imagen">{archivo.descripcion || 'Sin descripción'}</p></div><button type="button" className="cerrar-visor-imagen" aria-label="Cerrar visualización" onClick={onCerrar} autoFocus>×</button></header>
+      <div className="contenido-visor-imagen">
+        {!url && !error && <p className="estado-visor-imagen">Preparando vista protegida…</p>}
+        {error && <p className="error-visor-imagen" role="alert">{error}</p>}
+        {url && <img src={url} alt={`Vista previa de ${archivo.nombreOriginal}`} />}
+      </div>
+      <footer><button type="button" className="boton-secundario" onClick={onCerrar}>Cerrar</button></footer>
+    </section>
+  </div>
+}
+
+function ListadoArchivosClinicos({ archivos = [], cargando = false, titulo = 'Archivos disponibles', vacio = 'No hay archivos adjuntos.' }) {
+  const [error, setError] = useState(null)
+  const [imagenVisible, setImagenVisible] = useState(null)
+  const contexto = { PACIENTE: 'Paciente', TRATAMIENTO: 'Tratamiento', SESION: 'Sesión', EPICRISIS: 'Epicrisis' }
+  const descargar = async (archivo) => {
+    setError(null)
+    try { await apiArchivos.descargar(archivo.id, archivo.nombreOriginal) }
+    catch (fallo) { setError(fallo.message) }
+  }
+  const visualizar = async (archivo) => {
+    setError(null)
+    if (esImagenClinica(archivo)) {
+      setImagenVisible(archivo)
+      return
+    }
+    try { await abrirArchivoEnNuevaPestana(archivo) }
+    catch (fallo) { setError(fallo.message) }
+  }
+  return <div className="listado-archivos-clinicos">
+    <div className="titulo-listado-archivos"><h3>{titulo}</h3>{!!archivos.length && <span>{archivos.length} archivo{archivos.length === 1 ? '' : 's'}</span>}</div>
+    {error && <div className="mensaje error" role="alert">{error}</div>}
+    {cargando && !archivos.length ? <p className="estado-vacio">Consultando archivos…</p> : !archivos.length ? <p className="estado-vacio">{vacio}</p> : archivos.map((archivo) => <article className="archivo-clinico-lista" key={archivo.id}>
+      <span className="extension-archivo">{archivo.nombreOriginal.split('.').pop()}</span><div><button type="button" className="nombre-archivo-clinico" onClick={() => visualizar(archivo)}>{archivo.nombreOriginal}</button><small>{contexto[archivo.contexto]} · {categoriasArchivo.find(([valor]) => valor === archivo.categoria)?.[1] || archivo.categoria} · {formatearBytes(archivo.sizeBytes)} · v{archivo.version}</small><p className="descripcion-archivo-clinico"><strong>Descripción:</strong> {archivo.descripcion || 'Sin descripción'}</p></div><div className="acciones-archivo-clinico"><button type="button" onClick={() => visualizar(archivo)}>{etiquetaVisualizacionArchivo(archivo)}</button><button type="button" onClick={() => descargar(archivo)}>Descargar</button></div>
+    </article>)}
+    {imagenVisible && <VisorImagenClinica archivo={imagenVisible} onCerrar={() => setImagenVisible(null)} />}
+  </div>
+}
+
+function ArchivosClinicosPaciente({ paciente, onCargaExitosa, onArchivosActualizados, mostrarListado = true }) {
+  const [adjuntos, setAdjuntos] = useState([])
+  const [archivos, setArchivos] = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [mensaje, setMensaje] = useState(null)
+  const cargar = async () => {
+    setCargando(true)
+    try {
+      const documentos = await apiArchivos.listarDelPaciente(paciente.id)
+      setArchivos(documentos); onArchivosActualizados?.(documentos); setMensaje(null)
+    }
+    catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+  useEffect(() => { cargar() }, [paciente.id])
+  const adjuntar = async () => {
+    if (!adjuntos.length) return
+    setCargando(true); setMensaje(null)
+    const resultado = await subirAdjuntosClinicos(adjuntos, (item) => apiArchivos.adjuntarAPaciente(paciente.id, item))
+    setAdjuntos(resultado.fallidos.map((item) => item.adjunto))
+    if (resultado.cargados.length && onCargaExitosa) {
+      setCargando(false)
+      onCargaExitosa(resultado)
+      return
+    }
+    if (resultado.cargados.length) await cargar()
+    const partes = [`${resultado.cargados.length} archivo${resultado.cargados.length === 1 ? '' : 's'} guardado${resultado.cargados.length === 1 ? '' : 's'}.`]
+    if (resultado.fallidos.length) partes.push(`${resultado.fallidos.length} no pudieron cargarse: ${resultado.fallidos.map((item) => item.error).join(' ')}`)
+    if (resultado.advertencias.length) partes.push(resultado.advertencias.join(' '))
+    setMensaje({ tipo: resultado.fallidos.length ? 'error' : 'exito', texto: partes.join(' ') })
+    setCargando(false)
+  }
+  return <section className="panel administrador-adjuntos">
+    <div className="encabezado-adjuntos"><div><p className="sobrelinea">Documentación clínica</p><h2>Archivos adjuntos</h2><p>{mostrarListado ? 'Adjuntá un archivo directamente al paciente o consultá los vinculados a sus registros.' : 'Adjuntá documentación al paciente. Una vez guardada se incorporará automáticamente a la cronología clínica.'}</p></div></div>
+    {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
+    <AdjuntosClinicosInput adjuntos={adjuntos} onChange={setAdjuntos} disabled={cargando} titulo="Adjuntar al paciente" />
+    <div className="acciones-carga-adjuntos"><span>{adjuntos.length ? `${adjuntos.length} archivo${adjuntos.length === 1 ? '' : 's'} listo${adjuntos.length === 1 ? '' : 's'}` : 'No seleccionaste archivos.'}</span><button type="button" className="boton-principal" disabled={cargando || !adjuntos.length} onClick={adjuntar}>{cargando ? 'Analizando y guardando…' : 'Adjuntar archivos'}</button></div>
+    {mostrarListado && <ListadoArchivosClinicos archivos={archivos} cargando={cargando} vacio="Este paciente todavía no tiene archivos adjuntos." />}
+  </section>
+}
 const capitalizarPalabras = (valor) => valor
   .toLocaleLowerCase('es-AR')
   .replace(/(^|[^\p{L}])(\p{L})/gu, (_, separador, letra) => `${separador}${letra.toLocaleUpperCase('es-AR')}`)
@@ -29,6 +269,8 @@ const vistaDesdeRuta = () => {
   if (window.location.pathname.includes('historias-clinicas')) return 'historias'
   if (window.location.pathname.includes('epicrisis')) return 'epicrisis'
   if (window.location.pathname.includes('tratamientos')) return 'tratamientos'
+  if (window.location.pathname.includes('archivos-clinicos')) return 'archivos'
+  if (window.location.pathname.includes('consultar-exportaciones')) return 'consultar-exportaciones'
   if (window.location.pathname.includes('exportar-historia-clinica')) return 'exportar-historia'
   return 'inicio'
 }
@@ -37,7 +279,7 @@ export default function App() {
   const [vista, setVista] = useState(vistaDesdeRuta)
 
   const navegar = (destino) => {
-    const rutas = { fichas: '/fichas-medicas', pacientes: '/pacientes', historias: '/historias-clinicas', epicrisis: '/epicrisis', tratamientos: '/tratamientos', 'exportar-historia': '/exportar-historia-clinica', inicio: '/' }
+    const rutas = { fichas: '/fichas-medicas', pacientes: '/pacientes', historias: '/historias-clinicas', epicrisis: '/epicrisis', tratamientos: '/tratamientos', archivos: '/archivos-clinicos', 'exportar-historia': '/exportar-historia-clinica', 'consultar-exportaciones': '/consultar-exportaciones', inicio: '/' }
     const ruta = rutas[destino]
     window.history.pushState({}, '', ruta)
     setVista(destino)
@@ -64,9 +306,67 @@ export default function App() {
       {vista === 'historias' && <GestionHistoriasClinicas onVolver={() => navegar('inicio')} />}
       {vista === 'epicrisis' && <GestionEpicrisis onVolver={() => navegar('inicio')} />}
       {vista === 'tratamientos' && <GestionTratamientos onVolver={() => navegar('inicio')} />}
+      {vista === 'archivos' && <GestionArchivosClinicos onVolver={() => navegar('inicio')} />}
       {vista === 'exportar-historia' && <ExportarHistoriaClinica onVolver={() => navegar('inicio')} />}
+      {vista === 'consultar-exportaciones' && <ConsultarExportacionesHistoriaClinica onVolver={() => navegar('inicio')} />}
     </div>
   )
+}
+
+function GestionArchivosClinicos({ onVolver }) {
+  const [pantalla, setPantalla] = useState('buscar')
+  const [idProfesional, setIdProfesional] = useState('1')
+  const [pacientes, setPacientes] = useState([])
+  const [busqueda, setBusqueda] = useState('')
+  const [seleccionado, setSeleccionado] = useState(null)
+  const [buscado, setBuscado] = useState(false)
+  const [cargando, setCargando] = useState(false)
+  const [mensaje, setMensaje] = useState(null)
+  const [resultadoCarga, setResultadoCarga] = useState(null)
+
+  const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
+  const filtrados = pacientes.filter((paciente) =>
+    normalizar(`${paciente.apellido} ${paciente.nombre}`).includes(normalizar(busqueda)))
+
+  const buscar = async () => {
+    if (!busqueda.trim()) return
+    setCargando(true); setMensaje(null); setSeleccionado(null)
+    try { setPacientes(await apiPacientes.listar(idProfesional)); setBuscado(true) }
+    catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const confirmarPaciente = () => {
+    if (!seleccionado || !window.confirm(`¿Confirmás a ${seleccionado.apellido}, ${seleccionado.nombre} para gestionar sus archivos clínicos?`)) return
+    setPantalla('archivos'); setMensaje(null); setResultadoCarga(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const cargaExitosa = (resultado) => {
+    setResultadoCarga(resultado); setPantalla('exito')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const volver = pantalla === 'buscar' ? onVolver : () => {
+    setPantalla('buscar'); setSeleccionado(null); setMensaje(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  if (pantalla === 'exito') return <main className="contenido pagina-fichas pagina-archivos"><section className="panel resultado-epicrisis-exitoso" role="status"><span className="icono-exito-epicrisis">✓</span><p className="sobrelinea">Carga completada</p><h1>Archivos adjuntados con éxito</h1><p>La documentación clínica de {seleccionado.apellido}, {seleccionado.nombre} fue guardada correctamente.</p><ResultadoCargaAdjuntos resultado={resultadoCarga} /><ListadoArchivosClinicos archivos={resultadoCarga?.cargados || []} titulo="Archivos recién cargados" /><button className="boton-principal" onClick={onVolver}>Volver al panel principal</button></section></main>
+
+  return <main className="contenido pagina-fichas pagina-archivos">
+    <button className="volver" onClick={volver}>← {pantalla === 'buscar' ? 'Volver al inicio' : 'Volver a buscar pacientes'}</button>
+    <div className="cabecera-pagina"><div><p className="sobrelinea">Documentación clínica</p><h1>Archivos clínicos</h1><p>{pantalla === 'buscar' ? 'Buscá y seleccioná al paciente para continuar.' : 'Adjuntá archivos directamente al paciente y consultá toda su documentación.'}</p></div>{pantalla === 'buscar' && <label className="profesional">ID del profesional<input type="number" min="1" value={idProfesional} onChange={(e) => setIdProfesional(e.target.value)} /></label>}</div>
+    {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
+    {pantalla === 'buscar' && <section className="panel buscador-paciente-epicrisis">
+      <div className="titulo-paso"><h2>Buscar paciente</h2><p>Ingresá apellido o nombre para buscar coincidencias.</p></div>
+      <div className="fila-busqueda-epicrisis"><label className="buscador-epicrisis">Apellido - nombre<input autoFocus type="search" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscar() } }} placeholder="Ej. Pérez - Ana" /></label><button type="button" className="boton-principal" onClick={buscar} disabled={cargando || !busqueda.trim()}>{cargando ? 'Buscando…' : 'Buscar'}</button></div>
+      <div className="resultados-pacientes-epicrisis">{!buscado ? <p>Los pacientes encontrados aparecerán aquí.</p> : !filtrados.length ? <p>No se encontraron pacientes.</p> : filtrados.map((paciente) => <label className={seleccionado?.id === paciente.id ? 'seleccionado' : ''} key={paciente.id}><input type="radio" name="paciente-archivos" checked={seleccionado?.id === paciente.id} onChange={() => setSeleccionado(paciente)} /><span><strong>{paciente.apellido}, {paciente.nombre}</strong><small>DNI {paciente.dni}</small></span></label>)}</div>
+      <div className="confirmar-paciente-epicrisis"><span>{seleccionado ? `Seleccionado: ${seleccionado.apellido}, ${seleccionado.nombre}` : 'Seleccioná un paciente para continuar.'}</span><button type="button" className="boton-principal" disabled={!seleccionado || cargando} onClick={confirmarPaciente}>Confirmar paciente</button></div>
+    </section>}
+    {pantalla === 'archivos' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section><ArchivosClinicosPaciente paciente={seleccionado} onCargaExitosa={cargaExitosa} /></>}
+  </main>
 }
 
 function ExportarHistoriaClinica({ onVolver }) {
@@ -76,6 +376,7 @@ function ExportarHistoriaClinica({ onVolver }) {
   const [seleccionado, setSeleccionado] = useState(null)
   const [buscado, setBuscado] = useState(false)
   const [formato, setFormato] = useState('PDF')
+  const [tipoExportacion, setTipoExportacion] = useState('HISTORIA_CLINICA')
   const [motivo, setMotivo] = useState('SOLICITUD_DEL_PACIENTE')
   const [detalleMotivo, setDetalleMotivo] = useState('')
   const [cargando, setCargando] = useState(false)
@@ -105,7 +406,7 @@ function ExportarHistoriaClinica({ onVolver }) {
     evento.preventDefault(); setCargando(true); setMensaje(null)
     try {
       const nombre = await apiExportacionHistoriaClinica.exportar(seleccionado.id, {
-        formato, motivo, detalleMotivo: detalleMotivo.trim() || null,
+        formato, tipoExportacion, motivo, detalleMotivo: detalleMotivo.trim() || null,
       })
       setMensaje({ tipo: 'exito', texto: `La historia clínica se exportó correctamente como ${nombre}.` })
     } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
@@ -128,12 +429,96 @@ function ExportarHistoriaClinica({ onVolver }) {
     </section>}
     {pantalla === 'configurar' && <form className="formulario-exportacion" onSubmit={exportar}>
       <section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Historia clínica de</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section>
-      <section className="panel configuracion-exportacion"><div className="titulo-paso"><h2>Datos de la exportación</h2><p>La descarga es inmediata y quedará registrada con su hash SHA-256.</p></div>
-        <div className="grilla-formulario"><label>Formato<select required value={formato} onChange={(e) => setFormato(e.target.value)}><option value="PDF">PDF</option><option value="DOCX">Word (DOCX)</option><option value="CSV">CSV</option><option value="XLSX">Excel (XLSX)</option></select></label><label>Motivo<select required value={motivo} onChange={(e) => setMotivo(e.target.value)}><option value="SOLICITUD_DEL_PACIENTE">Solicitud del paciente</option><option value="CONTINUIDAD_DE_TRATAMIENTO">Continuidad de tratamiento</option><option value="DERIVACION">Derivación</option><option value="SEGUNDA_OPINION">Segunda opinión</option><option value="TRAMITE_ADMINISTRATIVO">Trámite administrativo</option><option value="OTRO">Otro</option></select></label></div>
+      <section className="panel configuracion-exportacion"><div className="titulo-paso"><h2>Datos de la exportación</h2><p>La historia incluirá referencias a los archivos clínicos activos. También podés descargar un ZIP con sus versiones actuales.</p></div>
+        <div className="grilla-formulario grilla-opciones-exportacion"><label>Tipo de exportación<select required value={tipoExportacion} onChange={(e) => { const tipo = e.target.value; setTipoExportacion(tipo); if (tipo === 'HISTORIA_CLINICA_CON_ADJUNTOS' && !['PDF', 'DOCX'].includes(formato)) setFormato('PDF') }}><option value="HISTORIA_CLINICA">Historia clínica</option><option value="HISTORIA_CLINICA_CON_ADJUNTOS">Historia clínica con adjuntos (ZIP)</option></select></label><label>Formato del documento principal<select required value={formato} onChange={(e) => setFormato(e.target.value)}><option value="PDF">PDF</option><option value="DOCX">Word (DOCX)</option>{tipoExportacion === 'HISTORIA_CLINICA' && <><option value="CSV">CSV</option><option value="XLSX">Excel (XLSX)</option></>}</select></label><label>Motivo<select required value={motivo} onChange={(e) => setMotivo(e.target.value)}><option value="SOLICITUD_DEL_PACIENTE">Solicitud del paciente</option><option value="CONTINUIDAD_DE_TRATAMIENTO">Continuidad de tratamiento</option><option value="DERIVACION">Derivación</option><option value="SEGUNDA_OPINION">Segunda opinión</option><option value="TRAMITE_ADMINISTRATIVO">Trámite administrativo</option><option value="OTRO">Otro</option></select></label></div>
+        <div className="resumen-tipo-exportacion" role="note">{tipoExportacion === 'HISTORIA_CLINICA_CON_ADJUNTOS' ? <><strong>Exportación completa</strong><span>Se descargará un ZIP con la historia en {formato}, un manifest de integridad y los adjuntos activos en su formato original.</span></> : <><strong>Exportación de historia clínica</strong><span>Se descargará un archivo {formato} con referencias a los adjuntos, sin incluir sus binarios.</span></>}</div>
         <label className="detalle-motivo-exportacion">Detalle del motivo <span>(opcional)</span><textarea maxLength="500" rows="4" value={detalleMotivo} onChange={(e) => setDetalleMotivo(e.target.value)} placeholder="Ej. Copia solicitada por el paciente" /><small>{detalleMotivo.length} / 500 caracteres</small></label>
-        <button className="boton-principal" disabled={cargando}>{cargando ? 'Generando archivo…' : `Exportar como ${formato}`}</button>
+        <button className="boton-principal" disabled={cargando}>{cargando ? 'Generando archivo…' : tipoExportacion === 'HISTORIA_CLINICA_CON_ADJUNTOS' ? `Generar ZIP con historia en ${formato}` : `Exportar como ${formato}`}</button>
       </section>
     </form>}
+  </main>
+}
+
+const etiquetasMotivoExportacion = {
+  SOLICITUD_DEL_PACIENTE: 'Solicitud del paciente',
+  CONTINUIDAD_DE_TRATAMIENTO: 'Continuidad de tratamiento',
+  DERIVACION: 'Derivación',
+  SEGUNDA_OPINION: 'Segunda opinión',
+  TRAMITE_ADMINISTRATIVO: 'Trámite administrativo',
+  OTRO: 'Otro',
+}
+const etiquetasTipoExportacion = {
+  HISTORIA_CLINICA: 'Historia clínica',
+  HISTORIA_CLINICA_CON_ADJUNTOS: 'Historia clínica con adjuntos',
+}
+
+function ConsultarExportacionesHistoriaClinica({ onVolver }) {
+  const [pantalla, setPantalla] = useState('buscar')
+  const [pacientes, setPacientes] = useState([])
+  const [busqueda, setBusqueda] = useState('')
+  const [seleccionado, setSeleccionado] = useState(null)
+  const [buscado, setBuscado] = useState(false)
+  const [exportaciones, setExportaciones] = useState([])
+  const [exportacionSeleccionada, setExportacionSeleccionada] = useState(null)
+  const [cargando, setCargando] = useState(false)
+  const [mensaje, setMensaje] = useState(null)
+
+  const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
+  const filtrados = pacientes.filter((paciente) =>
+    normalizar(`${paciente.apellido} ${paciente.nombre}`).includes(normalizar(busqueda)))
+  const formatearFecha = (valor) => new Date(valor).toLocaleString('es-AR', {
+    dateStyle: 'long', timeStyle: 'short',
+  })
+
+  const buscar = async () => {
+    if (!busqueda.trim()) return
+    setCargando(true); setMensaje(null); setSeleccionado(null)
+    try { setPacientes(await apiExportacionHistoriaClinica.listarPacientes()); setBuscado(true) }
+    catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const confirmarPaciente = async () => {
+    if (!seleccionado || !window.confirm(`¿Confirmás que querés consultar las exportaciones de ${seleccionado.apellido}, ${seleccionado.nombre}?`)) return
+    setCargando(true); setMensaje(null)
+    try {
+      setExportaciones(await apiExportacionHistoriaClinica.listarExportaciones(seleccionado.id))
+      setPantalla('listado')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const consultarDetalle = async (exportacion) => {
+    setCargando(true); setMensaje(null)
+    try {
+      setExportacionSeleccionada(await apiExportacionHistoriaClinica.obtenerExportacion(
+        seleccionado.id, exportacion.id))
+      setPantalla('detalle')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
+    finally { setCargando(false) }
+  }
+
+  const volver = pantalla === 'buscar' ? onVolver : pantalla === 'detalle' ? () => {
+    setPantalla('listado'); setExportacionSeleccionada(null); setMensaje(null)
+  } : () => {
+    setPantalla('buscar'); setSeleccionado(null); setExportaciones([]); setMensaje(null)
+  }
+
+  return <main className="contenido pagina-consulta-exportaciones">
+    <button className="volver" onClick={volver}>← {pantalla === 'buscar' ? 'Volver al inicio' : pantalla === 'detalle' ? 'Volver a las exportaciones' : 'Volver a buscar pacientes'}</button>
+    <div className="cabecera-pagina"><div><p className="sobrelinea">Trazabilidad clínica</p><h1>Consultar exportaciones de historias clínicas</h1><p>{pantalla === 'buscar' ? 'Buscá y confirmá el paciente cuyo historial de exportaciones querés revisar.' : pantalla === 'listado' ? 'Consultá las exportaciones ordenadas desde la más reciente.' : 'Revisá todos los datos registrados para esta exportación.'}</p></div></div>
+    {mensaje && <div className={`mensaje ${mensaje.tipo}`} role="alert">{mensaje.texto}</div>}
+    {pantalla === 'buscar' && <section className="panel buscador-paciente-epicrisis">
+      <div className="titulo-paso"><h2>Buscar paciente</h2><p>Solo se muestran pacientes asociados al profesional autenticado.</p></div>
+      <div className="fila-busqueda-epicrisis"><label className="buscador-epicrisis">Apellido - nombre<input autoFocus type="search" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscar() } }} placeholder="Ej. Pérez - Ana" /></label><button type="button" className="boton-principal" onClick={buscar} disabled={cargando || !busqueda.trim()}>{cargando ? 'Buscando…' : 'Buscar'}</button></div>
+      <div className="resultados-pacientes-epicrisis">{!buscado ? <p>Los pacientes encontrados aparecerán aquí.</p> : !filtrados.length ? <p>No se encontraron pacientes.</p> : filtrados.map((paciente) => <label className={seleccionado?.id === paciente.id ? 'seleccionado' : ''} key={paciente.id}><input type="radio" name="paciente-consulta-exportaciones" checked={seleccionado?.id === paciente.id} onChange={() => setSeleccionado(paciente)} /><span><strong>{paciente.apellido}, {paciente.nombre}</strong><small>DNI {paciente.dni}</small></span></label>)}</div>
+      <div className="confirmar-paciente-epicrisis"><span>{seleccionado ? `Seleccionado: ${seleccionado.apellido}, ${seleccionado.nombre}` : 'Seleccioná un paciente para continuar.'}</span><button type="button" className="boton-principal" disabled={!seleccionado || cargando} onClick={confirmarPaciente}>{cargando ? 'Consultando…' : 'Confirmar paciente'}</button></div>
+    </section>}
+    {pantalla === 'listado' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section><section className="panel listado-exportaciones-historia"><div className="encabezado-listado-exportaciones"><div><p className="sobrelinea">Historial cronológico</p><h2>Exportaciones realizadas</h2></div><span>{exportaciones.length} exportación{exportaciones.length === 1 ? '' : 'es'}</span></div>{!exportaciones.length ? <p className="estado-vacio">Todavía no se exportó la historia clínica de este paciente.</p> : <div className="exportaciones-historia">{exportaciones.map((exportacion) => { const formatoFinal = exportacion.formatoArchivoFinal || exportacion.formato; return <article className="exportacion-historia" key={exportacion.id}><span className={`formato-exportacion formato-${formatoFinal.toLowerCase()}`}>{formatoFinal}</span><div><strong>{exportacion.nombreArchivo}</strong><small>{formatearFecha(exportacion.fechaHoraExportacion)}</small><p>{etiquetasTipoExportacion[exportacion.tipoExportacion] || 'Historia clínica'} · {etiquetasMotivoExportacion[exportacion.motivo] || exportacion.motivo}</p></div><button type="button" className="boton-secundario" disabled={cargando} onClick={() => consultarDetalle(exportacion)}>Ver datos</button></article> })}</div>}</section></>}
+    {pantalla === 'detalle' && exportacionSeleccionada && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section><section className="panel detalle-exportacion-historia"><div className="cabecera-detalle-exportacion"><div><p className="sobrelinea">Exportación registrada</p><h2>{exportacionSeleccionada.nombreArchivo}</h2><p>{formatearFecha(exportacionSeleccionada.fechaHoraExportacion)}</p></div><span className={`formato-exportacion formato-${(exportacionSeleccionada.formatoArchivoFinal || exportacionSeleccionada.formato).toLowerCase()}`}>{exportacionSeleccionada.formatoArchivoFinal || exportacionSeleccionada.formato}</span></div><dl className="datos-exportacion-historia"><div><dt>ID de exportación</dt><dd>{exportacionSeleccionada.id}</dd></div><div><dt>ID del paciente</dt><dd>{exportacionSeleccionada.pacienteId}</dd></div><div><dt>ID del profesional</dt><dd>{exportacionSeleccionada.profesionalId}</dd></div><div><dt>Fecha y hora</dt><dd>{formatearFecha(exportacionSeleccionada.fechaHoraExportacion)}</dd></div><div><dt>Tipo de exportación</dt><dd>{etiquetasTipoExportacion[exportacionSeleccionada.tipoExportacion] || 'Historia clínica'}</dd></div><div><dt>Formato de la historia clínica</dt><dd>{exportacionSeleccionada.formatoHistoriaClinica || exportacionSeleccionada.formato}</dd></div><div><dt>Formato del archivo final</dt><dd>{exportacionSeleccionada.formatoArchivoFinal || exportacionSeleccionada.formato}</dd></div><div><dt>Motivo</dt><dd>{etiquetasMotivoExportacion[exportacionSeleccionada.motivo] || exportacionSeleccionada.motivo}</dd></div><div className="dato-exportacion-ancho"><dt>Detalle del motivo</dt><dd>{exportacionSeleccionada.detalleMotivo || 'Sin detalle adicional'}</dd></div><div className="dato-exportacion-ancho"><dt>Nombre del archivo</dt><dd>{exportacionSeleccionada.nombreArchivo}</dd></div><div className="dato-exportacion-ancho"><dt>Hash de integridad SHA-256</dt><dd><code>{exportacionSeleccionada.hashArchivo}</code></dd></div></dl></section></>}
   </main>
 }
 
@@ -145,18 +530,43 @@ function GestionHistoriasClinicas({ onVolver }) {
   const [seleccionado, setSeleccionado] = useState(null)
   const [buscado, setBuscado] = useState(false)
   const [eventos, setEventos] = useState([])
+  const [archivosHistoria, setArchivosHistoria] = useState([])
   const [eventoSeleccionado, setEventoSeleccionado] = useState(null)
   const [eventoDetalleAnterior, setEventoDetalleAnterior] = useState(null)
   const [cargando, setCargando] = useState(false)
   const [mensaje, setMensaje] = useState(null)
   const [rectificando, setRectificando] = useState(false)
   const [auditoriaEvento, setAuditoriaEvento] = useState(null)
+  const [filtroTipoEvento, setFiltroTipoEvento] = useState('todos')
+  const [imagenVisible, setImagenVisible] = useState(null)
 
   const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
   const pacientesFiltrados = pacientes.filter((paciente) =>
     normalizar(`${paciente.apellido} ${paciente.nombre}`).includes(normalizar(busqueda)))
   const formatearFecha = (valor) => new Date(valor).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' })
+  const eventosDeArchivos = (archivos) => archivos.map((archivo) => ({
+    tipo: 'archivo', fecha: archivo.createdAt || archivo.updatedAt,
+    nombre: archivo.nombreOriginal, datos: archivo,
+  }))
+  const ordenarCronologia = (items) => [...items].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+
+  const actualizarArchivosHistoria = (archivos) => {
+    setArchivosHistoria(archivos)
+    setEventos((actuales) => ordenarCronologia([
+      ...actuales.filter((evento) => evento.tipo !== 'archivo'), ...eventosDeArchivos(archivos),
+    ]))
+  }
+
+  const visualizarArchivo = async (archivo) => {
+    setMensaje(null)
+    if (esImagenClinica(archivo)) {
+      setImagenVisible(archivo)
+      return
+    }
+    try { await abrirArchivoEnNuevaPestana(archivo) }
+    catch (fallo) { setMensaje({ tipo: 'error', texto: fallo.message }) }
+  }
 
   const buscarPacientes = async () => {
     if (!idProfesional || !busqueda.trim()) return
@@ -172,24 +582,27 @@ function GestionHistoriasClinicas({ onVolver }) {
     setCargando(true); setMensaje(null)
     try {
       const cronologia = await cargarCronologia()
-      setEventos(cronologia); setEventoSeleccionado(null); setPantalla('historia')
+      setEventos(cronologia); setEventoSeleccionado(null); setFiltroTipoEvento('todos'); setPantalla('historia')
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
     finally { setCargando(false) }
   }
 
   const cargarCronologia = async () => {
-    const [epicrisis, tratamientos] = await Promise.all([
+    const [epicrisis, tratamientos, archivos] = await Promise.all([
       apiEpicrisis.listar(idProfesional, seleccionado.id), apiTratamientos.listar(idProfesional, seleccionado.id),
+      apiArchivos.listarDelPaciente(seleccionado.id),
     ])
-    const cronologia = [
+    setArchivosHistoria(archivos)
+    const cronologia = ordenarCronologia([
       ...epicrisis.map((item) => ({ tipo: 'epicrisis', fecha: item.fechaHora, nombre: 'Epicrisis', datos: item })),
       ...tratamientos.map((item) => ({ tipo: 'tratamiento', fecha: item.fechaCreacion, nombre: item.nombre, datos: item })),
       ...tratamientos.flatMap((tratamiento) => tratamiento.sesiones.map((sesion) => ({
         tipo: 'sesion', fecha: sesion.fechaHora, nombre: `Sesión N.º ${sesion.nroSesion} · ${tratamiento.nombre}`,
         datos: sesion, tratamiento,
       }))),
-    ].sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+      ...eventosDeArchivos(archivos),
+    ])
     setEventos(cronologia)
     return cronologia
   }
@@ -243,38 +656,55 @@ function GestionHistoriasClinicas({ onVolver }) {
       return
     }
     setPantalla(pantalla === 'detalle' ? 'historia' : 'buscar')
-    if (pantalla === 'historia') { setEventos([]); setSeleccionado(null) }
+    if (pantalla === 'historia') { setEventos([]); setArchivosHistoria([]); setFiltroTipoEvento('todos'); setSeleccionado(null) }
   }
+
+  const filtrosTipoEvento = [
+    ['todos', 'Todos'], ['epicrisis', 'Epicrisis'], ['tratamiento', 'Tratamientos'],
+    ['sesion', 'Sesiones'], ['archivo', 'Archivos'],
+  ]
+  const eventosFiltrados = filtroTipoEvento === 'todos'
+    ? eventos : eventos.filter((evento) => evento.tipo === filtroTipoEvento)
 
   return <main className="contenido pagina-historias">
     <button className="volver" onClick={volver}>← {pantalla === 'buscar' ? 'Volver al inicio' : pantalla === 'detalle' && eventoDetalleAnterior ? 'Volver al tratamiento' : pantalla === 'detalle' ? 'Volver a la historia clínica' : 'Volver a buscar pacientes'}</button>
     <div className="cabecera-pagina"><div><p className="sobrelinea">Registro clínico</p><h1>Historias clínicas</h1><p>{pantalla === 'buscar' ? 'Buscá y seleccioná al paciente.' : 'Consultá la actividad clínica ordenada cronológicamente.'}</p></div>{pantalla === 'buscar' && <label className="profesional">ID del profesional<input type="number" min="1" value={idProfesional} onChange={(e) => setIdProfesional(e.target.value)} /></label>}</div>
     {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
     {pantalla === 'buscar' && <section className="panel buscador-paciente-epicrisis"><div className="titulo-paso"><h2>Buscar paciente</h2><p>Ingresá apellido o nombre para buscar coincidencias.</p></div><div className="fila-busqueda-epicrisis"><label className="buscador-epicrisis">Apellido - nombre<input autoFocus type="search" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscarPacientes() } }} placeholder="Ej. Pérez - Ana" /></label><button className="boton-principal" onClick={buscarPacientes} disabled={cargando || !busqueda.trim()}>{cargando ? 'Buscando…' : 'Buscar'}</button></div><div className="resultados-pacientes-epicrisis">{!buscado ? <p>Los pacientes encontrados aparecerán aquí.</p> : !pacientesFiltrados.length ? <p>No se encontraron pacientes.</p> : pacientesFiltrados.map((paciente) => <label className={seleccionado?.id === paciente.id ? 'seleccionado' : ''} key={paciente.id}><input type="radio" name="paciente-historia" checked={seleccionado?.id === paciente.id} onChange={() => setSeleccionado(paciente)} /><span><strong>{paciente.apellido}, {paciente.nombre}</strong><small>DNI {paciente.dni}</small></span></label>)}</div><div className="confirmar-paciente-epicrisis"><span>{seleccionado ? `Seleccionado: ${seleccionado.apellido}, ${seleccionado.nombre}` : 'Seleccioná un paciente para continuar.'}</span><button className="boton-principal" disabled={!seleccionado || cargando} onClick={consultarHistoria}>{cargando ? 'Consultando…' : 'Consultar historia clínica'}</button></div></section>}
-    {pantalla === 'historia' && <><section className="panel identidad-paciente-epicrisis cabecera-historia"><div><p className="sobrelinea">Historia clínica de</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section><section className="panel listado-historia"><div className="encabezado-historia"><div><p className="sobrelinea">Cronología clínica</p><h2>Registros del paciente</h2></div><span>{eventos.length} registros</span></div><div className="eventos-historia">{!eventos.length ? <p className="estado-vacio">Este paciente todavía no tiene registros clínicos.</p> : eventos.map((evento) => <EventoHistoria evento={evento} formatearFecha={formatearFecha} onConsultar={() => abrirDetalle(evento)} key={`${evento.tipo}-${evento.datos.id}`} />)}</div></section></>}
+    {pantalla === 'historia' && <><section className="panel identidad-paciente-epicrisis cabecera-historia"><div><p className="sobrelinea">Historia clínica de</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div></section><ArchivosClinicosPaciente paciente={seleccionado} mostrarListado={false} onArchivosActualizados={actualizarArchivosHistoria} /><section className="panel listado-historia"><div className="encabezado-historia"><div><p className="sobrelinea">Cronología clínica unificada</p><h2>Registros y archivos del paciente</h2></div><span>{filtroTipoEvento === 'todos' ? `${eventos.length} elementos` : `${eventosFiltrados.length} de ${eventos.length}`}</span></div><div className="filtros-tipo-evento" role="group" aria-label="Filtrar cronología por tipo de evento">{filtrosTipoEvento.map(([valor, etiqueta]) => <button type="button" className={filtroTipoEvento === valor ? 'activo' : ''} aria-pressed={filtroTipoEvento === valor} onClick={() => setFiltroTipoEvento(valor)} key={valor}>{etiqueta}</button>)}</div><div className="eventos-historia">{!eventos.length ? <p className="estado-vacio">Este paciente todavía no tiene registros clínicos ni archivos.</p> : !eventosFiltrados.length ? <p className="estado-vacio">No hay elementos del tipo seleccionado.</p> : eventosFiltrados.map((evento) => <EventoHistoria evento={evento} formatearFecha={formatearFecha} onConsultar={() => evento.tipo === 'archivo' ? visualizarArchivo(evento.datos) : abrirDetalle(evento)} key={`${evento.tipo}-${evento.datos.id}`} />)}</div></section></>}
     {pantalla === 'detalle' && eventoSeleccionado && <DetalleHistoria evento={eventoSeleccionado} idProfesional={idProfesional} formatearFecha={formatearFecha}
       rectificando={rectificando} cargando={cargando} auditoria={auditoriaEvento}
       onRectificar={() => { setRectificando(true); setAuditoriaEvento(null) }} onCancelarRectificacion={() => setRectificando(false)}
       onGuardarRectificacion={guardarRectificacion} onConsultarAuditoria={consultarAuditoria} onDescargarAuditoria={descargarAuditoria}
+      archivos={archivosHistoria}
       onConsultarSesion={(sesion) => abrirDetalle({ tipo: 'sesion', fecha: sesion.fechaHora, nombre: `Sesión N.º ${sesion.nroSesion} · ${eventoSeleccionado.datos.nombre}`, datos: sesion, tratamiento: eventoSeleccionado.datos }, eventoSeleccionado)} />}
+    {imagenVisible && <VisorImagenClinica archivo={imagenVisible} onCerrar={() => setImagenVisible(null)} />}
   </main>
 }
 
 function EventoHistoria({ evento, formatearFecha, onConsultar }) {
-  const etiquetas = { epicrisis: 'Epicrisis', tratamiento: 'Tratamiento', sesion: 'Sesión' }
-  return <article className="evento-historia"><span className={`tipo-evento ${evento.tipo}`}>{etiquetas[evento.tipo]}</span><strong>{evento.nombre}</strong><small>{formatearFecha(evento.fecha)}</small><button type="button" className="boton-secundario" onClick={onConsultar}>Consultar datos</button></article>
+  const etiquetas = { epicrisis: 'Epicrisis', tratamiento: 'Tratamiento', sesion: 'Sesión', archivo: 'Archivo' }
+  return <article className="evento-historia"><span className={`tipo-evento ${evento.tipo}`}>{etiquetas[evento.tipo]}</span><div className="identidad-evento-historia"><strong>{evento.nombre}</strong>{evento.tipo === 'archivo' && <p>{evento.datos.descripcion || 'Sin descripción'}</p>}</div><small>{formatearFecha(evento.fecha)}</small><button type="button" className="boton-secundario" onClick={onConsultar}>{evento.tipo === 'archivo' ? etiquetaVisualizacionArchivo(evento.datos) : 'Consultar datos'}</button></article>
+}
+
+function AdjuntosEventoHistoria({ evento, archivos }) {
+  const contexto = evento.tipo.toUpperCase()
+  const asociados = archivos.filter((archivo) => archivo.contexto === contexto
+    && String(archivo.contextoId) === String(evento.datos.id))
+  const etiquetas = { EPICRISIS: 'la epicrisis', TRATAMIENTO: 'el tratamiento', SESION: 'la sesión' }
+  return <section className="panel archivos-evento-historia"><div><p className="sobrelinea">Documentación asociada</p><h2>Archivos adjuntos</h2><p>Documentos vinculados específicamente a {etiquetas[contexto]}.</p></div><ListadoArchivosClinicos archivos={asociados} titulo="Documentos del registro" vacio="Este registro no tiene archivos adjuntos." /></section>
 }
 
 function DetalleHistoria({ evento, idProfesional, formatearFecha, onConsultarSesion, rectificando, cargando, auditoria,
-  onRectificar, onCancelarRectificacion, onGuardarRectificacion, onConsultarAuditoria, onDescargarAuditoria }) {
+  onRectificar, onCancelarRectificacion, onGuardarRectificacion, onConsultarAuditoria, onDescargarAuditoria, archivos }) {
   const { datos } = evento
   const acciones = <div className="acciones-rectificacion"><button type="button" className="boton-principal" onClick={onRectificar}>Rectificar registro</button><button type="button" className="boton-secundario" onClick={onConsultarAuditoria} disabled={cargando}>{cargando ? 'Consultando…' : 'Ver historial de rectificaciones'}</button><button type="button" className="boton-secundario" onClick={onDescargarAuditoria}>Descargar informe de auditoría</button></div>
   if (evento.tipo === 'tratamiento') {
     const realizadas = datos.cantidadSesionesTotal - datos.cantidadSesionesFaltantes
-    return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle del tratamiento</p><h2>{datos.nombre}</h2><EstadoVersion datos={datos} formatearFecha={formatearFecha} /><p className="fecha-detalle">Creado el {formatearFecha(datos.fechaCreacion)}</p><dl className="datos-evento"><div><dt>Sesiones totales</dt><dd>{datos.cantidadSesionesTotal}</dd></div><div><dt>Sesiones realizadas</dt><dd>{realizadas}</dd></div><div><dt>Sesiones pendientes</dt><dd>{datos.cantidadSesionesFaltantes}</dd></div></dl><div className="observacion-detalle"><strong>Descripción</strong><br />{datos.descripcion || 'Sin descripción'}</div>{!rectificando && acciones}</section>{rectificando && <FormularioRectificacion evento={evento} idProfesional={idProfesional} cargando={cargando} onGuardar={onGuardarRectificacion} onCancelar={onCancelarRectificacion} />}<HistorialRectificaciones auditoria={auditoria} formatearFecha={formatearFecha} /><section className="panel"><div className="encabezado-historia"><div><p className="sobrelinea">Seguimiento</p><h2>Sesiones del tratamiento</h2></div><span>{datos.sesiones.length} sesiones</span></div><div className="sesiones-del-tratamiento">{!datos.sesiones.length ? <p className="estado-vacio">Este tratamiento todavía no tiene sesiones registradas.</p> : [...datos.sesiones].sort((a, b) => new Date(b.fechaHora) - new Date(a.fechaHora)).map((sesion) => <EventoHistoria key={sesion.id} evento={{ tipo: 'sesion', nombre: `Sesión N.º ${sesion.nroSesion}`, fecha: sesion.fechaHora, datos: sesion }} formatearFecha={formatearFecha} onConsultar={() => onConsultarSesion(sesion)} />)}</div></section></section>
+    return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle del tratamiento</p><h2>{datos.nombre}</h2><EstadoVersion datos={datos} formatearFecha={formatearFecha} /><p className="fecha-detalle">Creado el {formatearFecha(datos.fechaCreacion)}</p><dl className="datos-evento"><div><dt>Sesiones totales</dt><dd>{datos.cantidadSesionesTotal}</dd></div><div><dt>Sesiones realizadas</dt><dd>{realizadas}</dd></div><div><dt>Sesiones pendientes</dt><dd>{datos.cantidadSesionesFaltantes}</dd></div></dl><div className="observacion-detalle"><strong>Descripción</strong><br />{datos.descripcion || 'Sin descripción'}</div>{!rectificando && acciones}</section>{rectificando && <FormularioRectificacion evento={evento} idProfesional={idProfesional} cargando={cargando} onGuardar={onGuardarRectificacion} onCancelar={onCancelarRectificacion} />}<HistorialRectificaciones auditoria={auditoria} formatearFecha={formatearFecha} /><AdjuntosEventoHistoria evento={evento} archivos={archivos} /><section className="panel"><div className="encabezado-historia"><div><p className="sobrelinea">Seguimiento</p><h2>Sesiones del tratamiento</h2></div><span>{datos.sesiones.length} sesiones</span></div><div className="sesiones-del-tratamiento">{!datos.sesiones.length ? <p className="estado-vacio">Este tratamiento todavía no tiene sesiones registradas.</p> : [...datos.sesiones].sort((a, b) => new Date(b.fechaHora) - new Date(a.fechaHora)).map((sesion) => <EventoHistoria key={sesion.id} evento={{ tipo: 'sesion', nombre: `Sesión N.º ${sesion.nroSesion}`, fecha: sesion.fechaHora, datos: sesion }} formatearFecha={formatearFecha} onConsultar={() => onConsultarSesion(sesion)} />)}</div></section></section>
   }
   const esEpicrisis = evento.tipo === 'epicrisis'
-  return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle de {esEpicrisis ? 'la epicrisis' : 'la sesión'}</p><h2>{esEpicrisis ? 'Epicrisis' : `Sesión N.º ${datos.nroSesion}`}</h2><EstadoVersion datos={datos} formatearFecha={formatearFecha} /><p className="fecha-detalle">{formatearFecha(evento.fecha)}</p><dl className="datos-evento">{!esEpicrisis && <div><dt>Tratamiento</dt><dd>{evento.tratamiento.nombre}</dd></div>}<div><dt>Ficha médica</dt><dd>{datos.nombreFichaSeguimiento || 'Sin ficha médica'}</dd></div>{!esEpicrisis && <div><dt>Número de sesión</dt><dd>{datos.nroSesion}</dd></div>}</dl><div className="observacion-detalle"><strong>Observaciones</strong><br />{datos.observaciones || 'Sin observaciones'}</div>{!rectificando && acciones}</section>{rectificando && <FormularioRectificacion evento={evento} idProfesional={idProfesional} cargando={cargando} onGuardar={onGuardarRectificacion} onCancelar={onCancelarRectificacion} />}<HistorialRectificaciones auditoria={auditoria} formatearFecha={formatearFecha} /></section>
+  return <section className="detalle-historia"><section className="panel"><p className="sobrelinea">Detalle de {esEpicrisis ? 'la epicrisis' : 'la sesión'}</p><h2>{esEpicrisis ? 'Epicrisis' : `Sesión N.º ${datos.nroSesion}`}</h2><EstadoVersion datos={datos} formatearFecha={formatearFecha} /><p className="fecha-detalle">{formatearFecha(evento.fecha)}</p><dl className="datos-evento">{!esEpicrisis && <div><dt>Tratamiento</dt><dd>{evento.tratamiento.nombre}</dd></div>}<div><dt>Ficha médica</dt><dd>{datos.nombreFichaSeguimiento || 'Sin ficha médica'}</dd></div>{!esEpicrisis && <div><dt>Número de sesión</dt><dd>{datos.nroSesion}</dd></div>}</dl><div className="observacion-detalle"><strong>Observaciones</strong><br />{datos.observaciones || 'Sin observaciones'}</div>{!rectificando && acciones}</section>{rectificando && <FormularioRectificacion evento={evento} idProfesional={idProfesional} cargando={cargando} onGuardar={onGuardarRectificacion} onCancelar={onCancelarRectificacion} />}<HistorialRectificaciones auditoria={auditoria} formatearFecha={formatearFecha} /><AdjuntosEventoHistoria evento={evento} archivos={archivos} /></section>
 }
 
 function EstadoVersion({ datos, formatearFecha }) {
@@ -351,6 +781,9 @@ function GestionTratamientos({ onVolver }) {
   const [tratamientoSeleccionado, setTratamientoSeleccionado] = useState(null)
   const [tipoExito, setTipoExito] = useState('nuevo')
   const [pantallaAnteriorDatos, setPantallaAnteriorDatos] = useState('decision')
+  const [adjuntosTratamiento, setAdjuntosTratamiento] = useState([])
+  const [adjuntosSesion, setAdjuntosSesion] = useState([])
+  const [resultadoAdjuntos, setResultadoAdjuntos] = useState(null)
 
   const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
   const filtrados = pacientes.filter((p) => normalizar(`${p.apellido} ${p.nombre}`).includes(normalizar(busqueda)))
@@ -391,11 +824,12 @@ function GestionTratamientos({ onVolver }) {
   const abrirRegistroSesion = () => {
     if (!tratamientoSeleccionado) return
     setObservacionesSesion(''); setFichaSesion(null); setRespuestasFicha({})
+    setAdjuntosSesion([]); setResultadoAdjuntos(null)
     setPantalla('continuar'); window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const cancelarRegistroSesion = () => {
     if (!window.confirm('¿Confirmás que querés cancelar el registro de esta sesión? Los datos ingresados se perderán.')) return
-    setObservacionesSesion(''); setFichaSesion(null); setRespuestasFicha({}); setMensaje(null)
+    setObservacionesSesion(''); setFichaSesion(null); setRespuestasFicha({}); setAdjuntosSesion([]); setMensaje(null)
     setPantalla('seleccionar-tratamiento'); window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const consultarDatosPaciente = (origen) => {
@@ -408,10 +842,15 @@ function GestionTratamientos({ onVolver }) {
     if (!window.confirm(`¿Confirmás el registro de la sesión N.º ${tratamientoSeleccionado.cantidadSesionesTotal - tratamientoSeleccionado.cantidadSesionesFaltantes + 1} de “${tratamientoSeleccionado.nombre}”?`)) return
     setCargando(true); setMensaje(null)
     try {
-      await apiTratamientos.registrarSesion(idProfesional, seleccionado.id, tratamientoSeleccionado.id, {
+      const actualizado = await apiTratamientos.registrarSesion(idProfesional, seleccionado.id, tratamientoSeleccionado.id, {
         observaciones: observacionesSesion.trim() || 'Sin observaciones', idFichaSeguimiento: fichaSesion?.id || null,
         respuestasFichaSeguimiento: fichaSesion ? Object.values(respuestasFicha) : null,
       })
+      const sesionCreada = [...(actualizado.sesiones || [])].sort((a, b) => b.nroSesion - a.nroSesion)[0]
+      const resultado = sesionCreada
+        ? await subirAdjuntosClinicos(adjuntosSesion, (item) => apiArchivos.adjuntarASesion(sesionCreada.id, item))
+        : { cargados: [], fallidos: adjuntosSesion.map((adjunto) => ({ adjunto, error: 'No se pudo resolver la sesión creada.' })), advertencias: [] }
+      setResultadoAdjuntos(resultado)
       setTipoExito('sesion'); setPantalla('exito'); window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
     finally { setCargando(false) }
@@ -421,18 +860,28 @@ function GestionTratamientos({ onVolver }) {
     if (!window.confirm(`¿Confirmás el nuevo tratamiento para ${seleccionado.apellido}, ${seleccionado.nombre}?`)) return
     setCargando(true); setMensaje(null)
     try {
-      await apiTratamientos.crear(idProfesional, seleccionado.id, {
+      const creado = await apiTratamientos.crear(idProfesional, seleccionado.id, {
         nombre: tratamiento.nombre, descripcion: tratamiento.descripcion,
         cantidadSesionesTotal: Number(tratamiento.cantidadSesionesTotal),
         primeraSesion: cargarPrimera ? { observaciones: observacionesSesion.trim() || 'Sin observaciones', idFichaSeguimiento: fichaSesion?.id || null,
           respuestasFichaSeguimiento: fichaSesion ? Object.values(respuestasFicha) : null } : null,
       })
+      const resultadoTratamiento = await subirAdjuntosClinicos(adjuntosTratamiento,
+        (item) => apiArchivos.adjuntarATratamiento(creado.id, item))
+      let resultadoSesion = { cargados: [], fallidos: [], advertencias: [] }
+      if (cargarPrimera && adjuntosSesion.length) {
+        const sesionCreada = [...(creado.sesiones || [])].sort((a, b) => b.nroSesion - a.nroSesion)[0]
+        resultadoSesion = sesionCreada
+          ? await subirAdjuntosClinicos(adjuntosSesion, (item) => apiArchivos.adjuntarASesion(sesionCreada.id, item))
+          : { cargados: [], fallidos: adjuntosSesion.map((adjunto) => ({ adjunto, error: 'No se pudo resolver la primera sesión.' })), advertencias: [] }
+      }
+      setResultadoAdjuntos(combinarResultadosAdjuntos(resultadoTratamiento, resultadoSesion))
       setTipoExito('nuevo'); setPantalla('exito'); window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (error) { setMensaje({ tipo: 'error', texto: error.message }) }
     finally { setCargando(false) }
   }
 
-  if (pantalla === 'exito') return <main className="contenido pagina-fichas pagina-tratamientos"><section className="panel resultado-epicrisis-exitoso" role="status"><span className="icono-exito-epicrisis">✓</span><p className="sobrelinea">Registro completado</p><h1>{tipoExito === 'sesion' ? 'Sesión registrada con éxito' : 'Tratamiento asignado con éxito'}</h1><p>{tipoExito === 'sesion' ? `La nueva sesión de “${tratamientoSeleccionado.nombre}” fue guardada correctamente.` : `El tratamiento de ${seleccionado.apellido}, ${seleccionado.nombre} fue guardado correctamente.`}</p><button className="boton-principal" onClick={onVolver}>Volver al panel principal</button></section></main>
+  if (pantalla === 'exito') return <main className="contenido pagina-fichas pagina-tratamientos"><section className="panel resultado-epicrisis-exitoso" role="status"><span className="icono-exito-epicrisis">✓</span><p className="sobrelinea">Registro completado</p><h1>{tipoExito === 'sesion' ? 'Sesión registrada con éxito' : 'Tratamiento asignado con éxito'}</h1><p>{tipoExito === 'sesion' ? `La nueva sesión de “${tratamientoSeleccionado.nombre}” fue guardada correctamente.` : `El tratamiento de ${seleccionado.apellido}, ${seleccionado.nombre} fue guardado correctamente.`}</p><ResultadoCargaAdjuntos resultado={resultadoAdjuntos} /><button className="boton-principal" onClick={onVolver}>Volver al panel principal</button></section></main>
   if (pantalla === 'datos') return <main className="contenido pagina-fichas pagina-tratamientos"><button className="volver" onClick={() => setPantalla(pantallaAnteriorDatos)}>← Volver a tratamientos</button><VistaCompletaPaciente paciente={seleccionado} /></main>
   const volver = pantalla === 'buscar' ? onVolver : () => {
     if (pantalla === 'nuevo' || pantalla === 'seleccionar-tratamiento') setPantalla('decision')
@@ -445,10 +894,10 @@ function GestionTratamientos({ onVolver }) {
     <div className="cabecera-pagina"><div><p className="sobrelinea">Registro clínico</p><h1>Tratamientos</h1><p>{pantalla === 'buscar' ? 'Buscá y seleccioná al paciente.' : 'Gestioná el tratamiento del paciente seleccionado.'}</p></div>{pantalla === 'buscar' && <label className="profesional">ID del profesional<input type="number" min="1" value={idProfesional} onChange={(e) => setIdProfesional(e.target.value)} /></label>}</div>
     {mensaje && <div className={`mensaje ${mensaje.tipo}`}>{mensaje.texto}</div>}
     {pantalla === 'buscar' && <section className="panel buscador-paciente-epicrisis"><div className="titulo-paso"><h2>Buscar paciente</h2><p>Ingresá apellido o nombre para buscar coincidencias.</p></div><div className="fila-busqueda-epicrisis"><label className="buscador-epicrisis">Apellido - nombre<input autoFocus type="search" value={busqueda} onChange={(e) => { setBusqueda(e.target.value); setSeleccionado(null) }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); buscar() } }} placeholder="Ej. Pérez - Ana" /></label><button className="boton-principal" onClick={buscar} disabled={cargando || !busqueda.trim()}>{cargando ? 'Buscando…' : 'Buscar'}</button></div><div className="resultados-pacientes-epicrisis">{!buscado ? <p>Los pacientes encontrados aparecerán aquí.</p> : !filtrados.length ? <p>No se encontraron pacientes.</p> : filtrados.map((p) => <label className={seleccionado?.id === p.id ? 'seleccionado' : ''} key={p.id}><input type="radio" name="paciente-tratamiento" checked={seleccionado?.id === p.id} onChange={() => setSeleccionado(p)} /><span><strong>{p.apellido}, {p.nombre}</strong><small>DNI {p.dni}</small></span></label>)}</div><div className="confirmar-paciente-epicrisis"><span>{seleccionado ? `Seleccionado: ${seleccionado.apellido}, ${seleccionado.nombre}` : 'Seleccioná un paciente para continuar.'}</span><button className="boton-principal" disabled={!seleccionado} onClick={confirmarPaciente}>Confirmar paciente</button></div></section>}
-    {pantalla === 'decision' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button className="boton-secundario" onClick={() => consultarDatosPaciente('decision')}>Consultar todos los datos</button></section><section className="panel decision-tratamiento"><div className="titulo-paso"><h2>¿Qué querés hacer?</h2><p>Elegí cómo continuar con este paciente.</p></div><div className="opciones-tratamiento"><button onClick={() => { setDecision('nuevo'); setPantalla('nuevo') }}><strong>Asignar nuevo tratamiento</strong><span>Definí el tratamiento y, si corresponde, cargá la primera sesión.</span></button><button onClick={abrirTratamientosActivos} disabled={cargando}><strong>Continuar un tratamiento</strong><span>Seleccioná un tratamiento sin terminar y registrá la próxima sesión.</span></button></div></section></>}
+    {pantalla === 'decision' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button className="boton-secundario" onClick={() => consultarDatosPaciente('decision')}>Consultar todos los datos</button></section><section className="panel decision-tratamiento"><div className="titulo-paso"><h2>¿Qué querés hacer?</h2><p>Elegí cómo continuar con este paciente.</p></div><div className="opciones-tratamiento"><button onClick={() => { setDecision('nuevo'); setAdjuntosTratamiento([]); setAdjuntosSesion([]); setResultadoAdjuntos(null); setPantalla('nuevo') }}><strong>Asignar nuevo tratamiento</strong><span>Definí el tratamiento y, si corresponde, cargá la primera sesión.</span></button><button onClick={abrirTratamientosActivos} disabled={cargando}><strong>Continuar un tratamiento</strong><span>Seleccioná un tratamiento sin terminar y registrá la próxima sesión.</span></button></div></section></>}
     {pantalla === 'seleccionar-tratamiento' && <><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Paciente seleccionado</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button className="boton-secundario" onClick={() => consultarDatosPaciente('seleccionar-tratamiento')}>Consultar todos los datos</button></section><section className="panel seleccion-tratamiento"><div className="titulo-paso"><h2>Tratamientos sin terminar</h2><p>Seleccioná el tratamiento que querés continuar.</p></div><div className="lista-tratamientos-activos">{!tratamientosActivos.length ? <p>El paciente no tiene tratamientos pendientes.</p> : tratamientosActivos.map((item) => { const realizadas = item.cantidadSesionesTotal - item.cantidadSesionesFaltantes; return <label className={tratamientoSeleccionado?.id === item.id ? 'seleccionado' : ''} key={item.id}><input type="radio" name="tratamiento-activo" checked={tratamientoSeleccionado?.id === item.id} onChange={() => setTratamientoSeleccionado(item)} /><span><strong>{item.nombre}</strong><small>{realizadas} sesiones realizadas de {item.cantidadSesionesTotal}</small></span><em>{item.cantidadSesionesFaltantes} pendientes</em></label> })}</div><div className="pie-seleccion-tratamiento"><span>{tratamientoSeleccionado ? `Seleccionado: ${tratamientoSeleccionado.nombre}` : 'Seleccioná un tratamiento para continuar.'}</span><button className="boton-principal" disabled={!tratamientoSeleccionado} onClick={abrirRegistroSesion}>Continuar tratamiento</button></div></section></>}
-    {pantalla === 'continuar' && <form className="formulario-registro-epicrisis" onSubmit={registrarSesion}><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Nueva sesión para</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button type="button" className="boton-secundario" onClick={() => consultarDatosPaciente('continuar')}>Consultar todos los datos</button></section><section className="panel resumen-tratamiento"><div><p className="sobrelinea">Próxima sesión</p><h2>{tratamientoSeleccionado.nombre}</h2><p>Sesión N.º {tratamientoSeleccionado.cantidadSesionesTotal - tratamientoSeleccionado.cantidadSesionesFaltantes + 1} de {tratamientoSeleccionado.cantidadSesionesTotal}</p></div><span>{tratamientoSeleccionado.cantidadSesionesFaltantes} sesiones pendientes</span></section><section className="panel primera-sesion"><div className="datos-primera-sesion datos-continuar-sesion"><div className="seccion-ficha-seguimiento"><div><h3>Ficha médica de la sesión</h3><p>Opcionalmente, asigná y completá una ficha médica.</p></div>{fichaSesion ? <div className="ficha-seguimiento-seleccionada"><span><strong>{fichaSesion.nombre}</strong></span><button type="button" onClick={abrirFicha}>Cambiar</button><button type="button" className="quitar-ficha-seguimiento" onClick={() => { setFichaSesion(null); setRespuestasFicha({}) }}>Quitar</button></div> : <button type="button" className="boton-secundario" onClick={abrirFicha}>Agregar ficha médica</button>}</div>{fichaSesion && <AsignacionFicha fichas={[fichaSesion]} cargando={false} idsSeleccionadas={[String(fichaSesion.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={abrirFicha} />}<label>Observaciones de la sesión <span>(opcional)</span><textarea maxLength="1000" rows="8" value={observacionesSesion} onChange={(e) => setObservacionesSesion(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /><small>{observacionesSesion.length} / 1000 caracteres</small></label></div></section><section className="panel acciones-registro-sesion"><button type="button" className="boton-secundario" onClick={cancelarRegistroSesion} disabled={cargando}>Cancelar registro</button><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando…' : 'Confirmar registro'}</button></section></form>}
-    {pantalla === 'nuevo' && <form className="formulario-registro-epicrisis" onSubmit={registrar}><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Nuevo tratamiento para</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button type="button" className="boton-secundario" onClick={() => consultarDatosPaciente('nuevo')}>Consultar todos los datos</button></section><section className="panel formulario-tratamiento"><div className="titulo-paso"><h2>Datos del tratamiento</h2><p>Completá la planificación general.</p></div><div className="grilla-datos-tratamiento"><label>Nombre<input required maxLength="150" value={tratamiento.nombre} onChange={(e) => setTratamiento({ ...tratamiento, nombre: e.target.value })} /></label><label>Cantidad total de sesiones<input required type="number" min="1" max="1000" value={tratamiento.cantidadSesionesTotal} onChange={(e) => setTratamiento({ ...tratamiento, cantidadSesionesTotal: e.target.value })} /></label><label className="campo-ancho">Descripción<textarea maxLength="1000" rows="5" value={tratamiento.descripcion} onChange={(e) => setTratamiento({ ...tratamiento, descripcion: e.target.value })} /></label></div></section><section className="panel primera-sesion"><label className="interruptor-sesion"><input type="checkbox" checked={cargarPrimera} onChange={(e) => { setCargarPrimera(e.target.checked); if (!e.target.checked) { setFichaSesion(null); setRespuestasFicha({}) } }} /><span><strong>Cargar la primera sesión ahora</strong><small>Se registrará como sesión N.º 1 y se descontará de las sesiones faltantes.</small></span></label>{cargarPrimera && <div className="datos-primera-sesion"><div className="seccion-ficha-seguimiento"><div><h3>Ficha médica de la sesión</h3><p>Opcionalmente, asigná y completá una ficha médica.</p></div>{fichaSesion ? <div className="ficha-seguimiento-seleccionada"><span><strong>{fichaSesion.nombre}</strong></span><button type="button" onClick={abrirFicha}>Cambiar</button><button type="button" className="quitar-ficha-seguimiento" onClick={() => { setFichaSesion(null); setRespuestasFicha({}) }}>Quitar</button></div> : <button type="button" className="boton-secundario" onClick={abrirFicha}>Agregar ficha médica</button>}</div>{fichaSesion && <AsignacionFicha fichas={[fichaSesion]} cargando={false} idsSeleccionadas={[String(fichaSesion.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={abrirFicha} />}<label>Observaciones de la primera sesión <span>(opcional)</span><textarea maxLength="1000" rows="7" value={observacionesSesion} onChange={(e) => setObservacionesSesion(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /></label></div>}</section><section className="panel acciones-tratamiento"><p>Se solicitará confirmación antes de guardar.</p><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando…' : 'Asignar tratamiento'}</button></section></form>}
+    {pantalla === 'continuar' && <form className="formulario-registro-epicrisis" onSubmit={registrarSesion}><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Nueva sesión para</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button type="button" className="boton-secundario" onClick={() => consultarDatosPaciente('continuar')}>Consultar todos los datos</button></section><section className="panel resumen-tratamiento"><div><p className="sobrelinea">Próxima sesión</p><h2>{tratamientoSeleccionado.nombre}</h2><p>Sesión N.º {tratamientoSeleccionado.cantidadSesionesTotal - tratamientoSeleccionado.cantidadSesionesFaltantes + 1} de {tratamientoSeleccionado.cantidadSesionesTotal}</p></div><span>{tratamientoSeleccionado.cantidadSesionesFaltantes} sesiones pendientes</span></section><section className="panel primera-sesion"><div className="datos-primera-sesion datos-continuar-sesion"><div className="seccion-ficha-seguimiento"><div><h3>Ficha médica de la sesión</h3><p>Opcionalmente, asigná y completá una ficha médica.</p></div>{fichaSesion ? <div className="ficha-seguimiento-seleccionada"><span><strong>{fichaSesion.nombre}</strong></span><button type="button" onClick={abrirFicha}>Cambiar</button><button type="button" className="quitar-ficha-seguimiento" onClick={() => { setFichaSesion(null); setRespuestasFicha({}) }}>Quitar</button></div> : <button type="button" className="boton-secundario" onClick={abrirFicha}>Agregar ficha médica</button>}</div>{fichaSesion && <AsignacionFicha fichas={[fichaSesion]} cargando={false} idsSeleccionadas={[String(fichaSesion.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={abrirFicha} />}<label>Observaciones de la sesión <span>(opcional)</span><textarea maxLength="1000" rows="8" value={observacionesSesion} onChange={(e) => setObservacionesSesion(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /><small>{observacionesSesion.length} / 1000 caracteres</small></label></div></section><AdjuntosClinicosInput adjuntos={adjuntosSesion} onChange={setAdjuntosSesion} disabled={cargando} titulo="Archivos de la sesión" descripcion="Estos archivos quedarán vinculados exclusivamente a la nueva sesión." /><section className="panel acciones-registro-sesion"><button type="button" className="boton-secundario" onClick={cancelarRegistroSesion} disabled={cargando}>Cancelar registro</button><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando y analizando archivos…' : 'Confirmar registro'}</button></section></form>}
+    {pantalla === 'nuevo' && <form className="formulario-registro-epicrisis" onSubmit={registrar}><section className="panel identidad-paciente-epicrisis"><div><p className="sobrelinea">Nuevo tratamiento para</p><h2>{seleccionado.apellido}, {seleccionado.nombre}</h2><p>DNI {seleccionado.dni}</p></div><button type="button" className="boton-secundario" onClick={() => consultarDatosPaciente('nuevo')}>Consultar todos los datos</button></section><section className="panel formulario-tratamiento"><div className="titulo-paso"><h2>Datos del tratamiento</h2><p>Completá la planificación general.</p></div><div className="grilla-datos-tratamiento"><label>Nombre<input required maxLength="150" value={tratamiento.nombre} onChange={(e) => setTratamiento({ ...tratamiento, nombre: e.target.value })} /></label><label>Cantidad total de sesiones<input required type="number" min="1" max="1000" value={tratamiento.cantidadSesionesTotal} onChange={(e) => setTratamiento({ ...tratamiento, cantidadSesionesTotal: e.target.value })} /></label><label className="campo-ancho">Descripción<textarea maxLength="1000" rows="5" value={tratamiento.descripcion} onChange={(e) => setTratamiento({ ...tratamiento, descripcion: e.target.value })} /></label></div></section><AdjuntosClinicosInput adjuntos={adjuntosTratamiento} onChange={setAdjuntosTratamiento} disabled={cargando} titulo="Archivos del tratamiento" descripcion="Estos archivos quedarán vinculados al tratamiento, no a una sesión particular." /><section className="panel primera-sesion"><label className="interruptor-sesion"><input type="checkbox" checked={cargarPrimera} onChange={(e) => { setCargarPrimera(e.target.checked); if (!e.target.checked) { setFichaSesion(null); setRespuestasFicha({}); setAdjuntosSesion([]) } }} /><span><strong>Cargar la primera sesión ahora</strong><small>Se registrará como sesión N.º 1 y se descontará de las sesiones faltantes.</small></span></label>{cargarPrimera && <div className="datos-primera-sesion"><div className="seccion-ficha-seguimiento"><div><h3>Ficha médica de la sesión</h3><p>Opcionalmente, asigná y completá una ficha médica.</p></div>{fichaSesion ? <div className="ficha-seguimiento-seleccionada"><span><strong>{fichaSesion.nombre}</strong></span><button type="button" onClick={abrirFicha}>Cambiar</button><button type="button" className="quitar-ficha-seguimiento" onClick={() => { setFichaSesion(null); setRespuestasFicha({}) }}>Quitar</button></div> : <button type="button" className="boton-secundario" onClick={abrirFicha}>Agregar ficha médica</button>}</div>{fichaSesion && <AsignacionFicha fichas={[fichaSesion]} cargando={false} idsSeleccionadas={[String(fichaSesion.id)]} respuestas={respuestasFicha} setRespuestas={setRespuestasFicha} ocultarSelector onSeleccionar={() => {}} onActualizar={abrirFicha} />}<label>Observaciones de la primera sesión <span>(opcional)</span><textarea maxLength="1000" rows="7" value={observacionesSesion} onChange={(e) => setObservacionesSesion(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /></label></div>}</section>{cargarPrimera && <AdjuntosClinicosInput adjuntos={adjuntosSesion} onChange={setAdjuntosSesion} disabled={cargando} titulo="Archivos de la primera sesión" descripcion="Estos archivos quedarán vinculados a la sesión N.º 1." />}<section className="panel acciones-tratamiento"><p>Se solicitará confirmación antes de guardar.</p><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando y analizando archivos…' : 'Asignar tratamiento'}</button></section></form>}
     {modalAbierto && <div className="fondo-modal-ficha" onMouseDown={(e) => { if (e.target === e.currentTarget) setModalAbierto(false) }}><section className="modal-ficha-seguimiento" role="dialog" aria-modal="true"><header><div><p className="sobrelinea">Plantillas disponibles</p><h2>Ficha médica de la sesión</h2></div><button type="button" onClick={() => setModalAbierto(false)}>×</button></header><div className="lista-modal-fichas">{!fichasDisponibles.length ? <p className="estado-modal-fichas">No hay fichas médicas disponibles.</p> : fichasDisponibles.map((f) => <label className={idFichaModal === String(f.id) ? 'seleccionada' : ''} key={f.id}><input type="radio" checked={idFichaModal === String(f.id)} onChange={() => setIdFichaModal(String(f.id))} /><span><strong>{f.nombre}</strong><small>{f.descripcion || `${f.detalles.length} secciones`}</small></span></label>)}</div><footer><button type="button" className="boton-secundario" onClick={() => setModalAbierto(false)}>Cancelar</button><button type="button" className="boton-principal" disabled={!idFichaModal} onClick={elegirFicha}>Agregar</button></footer></section></div>}
   </main>
 }
@@ -469,6 +918,8 @@ function GestionEpicrisis({ onVolver }) {
   const [cargando, setCargando] = useState(false)
   const [buscado, setBuscado] = useState(false)
   const [mensaje, setMensaje] = useState(null)
+  const [adjuntosEpicrisis, setAdjuntosEpicrisis] = useState([])
+  const [resultadoAdjuntos, setResultadoAdjuntos] = useState(null)
 
   const normalizar = (valor) => valor.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/[-,]/g, ' ').replace(/\s+/g, ' ').toLowerCase().trim()
@@ -486,7 +937,7 @@ function GestionEpicrisis({ onVolver }) {
   const confirmarPaciente = () => {
     if (!seleccionado) return
     if (!window.confirm(`¿Confirmás a ${seleccionado.apellido}, ${seleccionado.nombre} para registrar la epicrisis?`)) return
-    setMensaje(null); setPantalla('registrar'); window.scrollTo({ top: 0, behavior: 'smooth' })
+    setMensaje(null); setAdjuntosEpicrisis([]); setResultadoAdjuntos(null); setPantalla('registrar'); window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const abrirModalFicha = async () => {
@@ -514,11 +965,14 @@ function GestionEpicrisis({ onVolver }) {
     if (!confirmar) return
     setCargando(true); setMensaje(null)
     try {
-      await apiEpicrisis.registrar(idProfesional, seleccionado.id, {
+      const creada = await apiEpicrisis.registrar(idProfesional, seleccionado.id, {
         observaciones: observaciones.trim() || 'Sin observaciones',
         idFichaSeguimiento: fichaSeguimiento?.id || null,
         respuestasFichaSeguimiento: fichaSeguimiento ? Object.values(respuestasSeguimiento) : null,
       })
+      const resultado = await subirAdjuntosClinicos(adjuntosEpicrisis,
+        (item) => apiArchivos.adjuntarAEpicrisis(creada.id, item))
+      setResultadoAdjuntos(resultado)
       setObservaciones('')
       setPantalla('exito')
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -532,6 +986,7 @@ function GestionEpicrisis({ onVolver }) {
       <p className="sobrelinea">Registro completado</p>
       <h1>Epicrisis registrada con éxito</h1>
       <p>La epicrisis de {seleccionado.apellido}, {seleccionado.nombre} fue guardada correctamente.</p>
+      <ResultadoCargaAdjuntos resultado={resultadoAdjuntos} />
       <button type="button" className="boton-principal" onClick={onVolver}>Volver al panel principal</button>
     </section>
   </main>
@@ -569,7 +1024,8 @@ function GestionEpicrisis({ onVolver }) {
           respuestas={respuestasSeguimiento} setRespuestas={setRespuestasSeguimiento} ocultarSelector
           onSeleccionar={() => {}} onActualizar={abrirModalFicha} />
       </section>}
-      <section className="panel seccion-observaciones-epicrisis"><div className="titulo-paso"><h2>Observaciones</h2><p>Ingresá la síntesis clínica correspondiente a esta epicrisis.</p></div><label className="observaciones-epicrisis">Síntesis clínica <span>(opcional)</span><textarea autoFocus maxLength="1000" rows="12" value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /><small>{observaciones.length} / 1000 caracteres</small></label><div className="acciones-epicrisis"><p>Se solicitará confirmación antes de guardar.</p><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando…' : 'Registrar epicrisis'}</button></div></section>
+      <AdjuntosClinicosInput adjuntos={adjuntosEpicrisis} onChange={setAdjuntosEpicrisis} disabled={cargando} titulo="Archivos de la epicrisis" descripcion="Estos archivos quedarán vinculados exclusivamente a esta epicrisis." />
+      <section className="panel seccion-observaciones-epicrisis"><div className="titulo-paso"><h2>Observaciones</h2><p>Ingresá la síntesis clínica correspondiente a esta epicrisis.</p></div><label className="observaciones-epicrisis">Síntesis clínica <span>(opcional)</span><textarea autoFocus maxLength="1000" rows="12" value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Si no ingresás nada, se guardará “Sin observaciones”." /><small>{observaciones.length} / 1000 caracteres</small></label><div className="acciones-epicrisis"><p>Se solicitará confirmación antes de guardar.</p><button className="boton-principal" disabled={cargando}>{cargando ? 'Registrando y analizando archivos…' : 'Registrar epicrisis'}</button></div></section>
     </form>}
     {modalFichaAbierto && <div className="fondo-modal-ficha" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setModalFichaAbierto(false) }}>
       <section className="modal-ficha-seguimiento" role="dialog" aria-modal="true" aria-labelledby="titulo-modal-ficha">

@@ -1,0 +1,68 @@
+.bloque-adjuntos { padding: 26px 30px; }
+.encabezado-adjuntos { display: flex; align-items: flex-start; justify-content: space-between; gap: 22px; }
+.encabezado-adjuntos h2,.encabezado-adjuntos h3 { margin: 5px 0; color: #294b42; }
+.encabezado-adjuntos p { margin: 0; color: #71817c; font-size: 12px; line-height: 1.5; }
+.selector-archivos { flex: 0 0 auto; }
+.selector-archivos input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.selector-archivos span { display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 9px 14px; border: 1px solid #bcd4ca; border-radius: 9px; background: #f1f7f4; color: #176b57; font-size: 12px; font-weight: 700; cursor: pointer; }
+.selector-archivos input:focus-visible + span { outline: 3px solid rgba(79,169,135,.22); outline-offset: 2px; }
+.ayuda-adjuntos { margin: 14px 0 0; padding: 11px 13px; border: 1px dashed #cfddd7; border-radius: 10px; color: #7c8b86; background: #fafcfb; font-size: 11px; }
+.limites-adjuntos { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin: 14px 0 0; padding: 11px 13px; border: 1px dashed #cfddd7; border-radius: 10px; color: #667a73; background: #fafcfb; font-size: 11px; }
+.limites-adjuntos > strong { margin-right: 2px; color: #315047; }
+.limites-adjuntos > span { padding: 5px 8px; border-radius: 7px; background: #eaf3ef; color: #45645b; }
+.limites-adjuntos > span b { color: #176b57; }
+.limites-adjuntos > small { flex-basis: 100%; color: #7c8b86; line-height: 1.45; }
+.lista-adjuntos-seleccionados { display: grid; gap: 10px; margin-top: 16px; }
+.adjunto-seleccionado { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(155px,.55fr) minmax(180px,1fr) auto; align-items: end; gap: 10px; padding: 13px; border: 1px solid #dbe6e1; border-radius: 12px; background: #fbfdfc; }
+.identidad-adjunto { align-self: center; min-width: 0; }
+.identidad-adjunto strong,.identidad-adjunto small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.identidad-adjunto strong { color: #315047; font-size: 12px; }
+.identidad-adjunto small { margin-top: 4px; color: #82908b; font-size: 10px; }
+.adjunto-seleccionado label { color: #60736d; font-size: 10px; font-weight: 700; }
+.adjunto-seleccionado select,.adjunto-seleccionado input { display: block; width: 100%; margin-top: 5px; padding: 9px 10px; border: 1px solid #cedbd6; border-radius: 8px; background: white; color: #294b42; outline: none; }
+.adjunto-seleccionado select:focus,.adjunto-seleccionado input:focus { border-color: #4fa987; box-shadow: 0 0 0 3px rgba(79,169,135,.12); }
+.quitar-adjunto { width: 34px; height: 34px; border: 0; border-radius: 8px; background: #faeeec; color: #a0473e; font-size: 18px; }
+.error-adjuntos { margin: 12px 0 0; color: #a43b30; font-size: 12px; font-weight: 600; }
+.resultado-adjuntos { margin: 20px auto 0; padding: 13px 16px; border-radius: 11px; background: #edf6f2; color: #31574d; font-size: 12px; line-height: 1.5; }
+.resultado-adjuntos.con-fallos { background: #fff3ef; color: #91463e; }
+.errores-carga-adjuntos { margin: 9px 0 5px; padding-left: 20px; }
+.errores-carga-adjuntos li { margin-top: 5px; }
+.errores-carga-adjuntos li strong { overflow-wrap: anywhere; }
+.administrador-adjuntos { padding: 0; overflow: hidden; }
+.administrador-adjuntos > .encabezado-adjuntos { padding: 24px 26px 0; }
+.administrador-adjuntos .bloque-adjuntos { padding-top: 20px; border: 0; box-shadow: none; }
+.acciones-carga-adjuntos { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 16px 26px; border-top: 1px solid #e1e9e5; background: #f7faf8; }
+.acciones-carga-adjuntos span { color: #74847f; font-size: 11px; }
+.acciones-carga-adjuntos .boton-principal { width: auto; min-width: 190px; margin: 0; }
+.listado-archivos-clinicos { border-top: 1px solid #e1e9e5; padding: 20px 26px 25px; }
+.listado-archivos-clinicos h3 { margin: 0 0 13px; font-size: 15px; }
+.titulo-listado-archivos { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.titulo-listado-archivos > span { padding: 5px 9px; border-radius: 999px; background: #e7f2ed; color: #176b57; font-size: 10px; font-weight: 700; }
+.archivo-clinico-lista { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e7eeeb; }
+.archivo-clinico-lista:last-child { border-bottom: 0; }
+.extension-archivo { min-width: 44px; padding: 7px 8px; border-radius: 8px; background: #e7f2ed; color: #176b57; text-align: center; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.archivo-clinico-lista small { display: block; }
+.archivo-clinico-lista small { margin-top: 4px; color: #82908b; font-size: 10px; }
+.descripcion-archivo-clinico { margin: 6px 0 0; color: #60736d; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.descripcion-archivo-clinico strong { color: #456159; }
+.archivo-clinico-lista button { border: 1px solid #bcd4ca; border-radius: 8px; padding: 8px 10px; background: #f1f7f4; color: #176b57; font-size: 11px; font-weight: 700; }
+.nombre-archivo-clinico { display: block; max-width: 100%; padding: 0 !important; border: 0 !important; background: transparent !important; color: #315047 !important; font-size: 12px !important; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nombre-archivo-clinico:hover { text-decoration: underline; }
+.acciones-archivo-clinico { display: flex; gap: 7px; }
+.fondo-visor-imagen { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; background: rgba(13,35,29,.72); backdrop-filter: blur(3px); }
+.visor-imagen-clinica { display: grid; grid-template-rows: auto minmax(0,1fr) auto; width: min(1120px,96vw); height: min(900px,92vh); overflow: hidden; border-radius: 16px; background: #fff; box-shadow: 0 24px 80px rgba(0,0,0,.32); }
+.visor-imagen-clinica > header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 22px; border-bottom: 1px solid #dfe9e5; }
+.visor-imagen-clinica > header h2 { max-width: min(780px,70vw); margin: 3px 0 0; color: #294b42; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.descripcion-visor-imagen { max-width: min(780px,70vw); margin: 5px 0 0; color: #71817c; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.cerrar-visor-imagen { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border: 0; border-radius: 9px; background: #edf4f1; color: #315047; font-size: 24px; line-height: 1; cursor: pointer; }
+.cerrar-visor-imagen:hover { background: #dfece6; }
+.cerrar-visor-imagen:focus-visible { outline: 3px solid rgba(79,169,135,.28); outline-offset: 2px; }
+.contenido-visor-imagen { display: grid; place-items: center; min-height: 0; padding: 20px; overflow: auto; background: #18201e; }
+.contenido-visor-imagen img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
+.estado-visor-imagen,.error-visor-imagen { margin: 0; padding: 16px 18px; border-radius: 10px; background: #fff; color: #315047; font-size: 13px; font-weight: 600; }
+.error-visor-imagen { color: #9a3f36; background: #fff2ef; }
+.visor-imagen-clinica > footer { display: flex; justify-content: flex-end; padding: 14px 22px; border-top: 1px solid #dfe9e5; background: #f7faf8; }
+.pagina-archivos { max-width: 1180px; }
+.pagina-archivos > .identidad-paciente-epicrisis { margin-top: 26px; }
+.pagina-archivos > .administrador-adjuntos { margin-top: 18px; }
+@media (max-width: 760px) { .bloque-adjuntos { padding: 22px 18px; }.encabezado-adjuntos { align-items: stretch; flex-direction: column; }.selector-archivos span { width: 100%; }.limites-adjuntos { align-items: stretch; }.limites-adjuntos > strong,.limites-adjuntos > span { width: 100%; }.adjunto-seleccionado { grid-template-columns: 1fr; }.quitar-adjunto { width: 100%; }.acciones-carga-adjuntos { align-items: stretch; flex-direction: column; }.acciones-carga-adjuntos .boton-principal { width: 100%; }.archivo-clinico-lista { grid-template-columns: auto minmax(0,1fr); }.acciones-archivo-clinico { grid-column: 1 / -1; }.acciones-archivo-clinico button { width: 100%; }.fondo-visor-imagen { padding: 0; }.visor-imagen-clinica { width: 100vw; height: 100dvh; border-radius: 0; }.visor-imagen-clinica > header { padding: 15px 16px; }.visor-imagen-clinica > header h2 { max-width: 70vw; }.contenido-visor-imagen { padding: 10px; }.visor-imagen-clinica > footer { padding: 12px 16px; } }

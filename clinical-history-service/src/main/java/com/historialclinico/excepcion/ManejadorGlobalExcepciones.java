@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.Instant;
 import java.util.List;
@@ -53,6 +55,38 @@ public class ManejadorGlobalExcepciones {
     public ResponseEntity<ErrorApi> manejarAccesoDenegado(AccessDeniedException excepcion,
             HttpServletRequest solicitud) {
         return construir(HttpStatus.FORBIDDEN, excepcion.getMessage(), solicitud.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(ExcepcionArchivoInvalido.class)
+    public ResponseEntity<ErrorApi> manejarArchivoInvalido(ExcepcionArchivoInvalido excepcion,
+            HttpServletRequest solicitud) {
+        return construir(HttpStatus.BAD_REQUEST, excepcion.getMessage(), solicitud.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorApi> manejarMultipartExcedido(MaxUploadSizeExceededException excepcion,
+            HttpServletRequest solicitud) {
+        return construir(HttpStatus.BAD_REQUEST, "El archivo supera el máximo general de 20 MB",
+                solicitud.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorApi> manejarTipoParametroInvalido(MethodArgumentTypeMismatchException excepcion,
+            HttpServletRequest solicitud) {
+        return construir(HttpStatus.BAD_REQUEST, "La solicitud contiene un parámetro inválido",
+                solicitud.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(ExcepcionMalwareDetectado.class)
+    public ResponseEntity<ErrorApi> manejarMalware(ExcepcionMalwareDetectado excepcion,
+            HttpServletRequest solicitud) {
+        return construir(HttpStatus.UNPROCESSABLE_ENTITY, excepcion.getMessage(), solicitud.getRequestURI(), List.of());
+    }
+
+    @ExceptionHandler(ExcepcionServicioArchivosNoDisponible.class)
+    public ResponseEntity<ErrorApi> manejarServicioArchivosNoDisponible(
+            ExcepcionServicioArchivosNoDisponible excepcion, HttpServletRequest solicitud) {
+        return construir(HttpStatus.SERVICE_UNAVAILABLE, excepcion.getMessage(), solicitud.getRequestURI(), List.of());
     }
 
     private ResponseEntity<ErrorApi> construir(

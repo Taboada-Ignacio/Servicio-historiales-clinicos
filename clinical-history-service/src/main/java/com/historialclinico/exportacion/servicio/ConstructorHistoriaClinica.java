@@ -27,25 +27,34 @@ public class ConstructorHistoriaClinica {
     }
 
     public HistoriaClinicaDocumento construir(Paciente paciente, Instant fechaGeneracion) {
+        return construir(paciente, fechaGeneracion, List.of());
+    }
+
+    public HistoriaClinicaDocumento construir(Paciente paciente, Instant fechaGeneracion,
+            List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos) {
         List<HistoriaClinicaDocumento.RegistroClinico> registros = new ArrayList<>();
         paciente.getFichasAsignadas().stream()
                 .filter(ficha -> ficha.getOrigen() == OrigenFichaPaciente.DIRECTA)
                 .forEach(ficha -> registros.add(registroFicha(ficha)));
 
         repositorioEpicrisis.findAllByPacienteIdAndPacienteIdProfesionalOrderByFechaHoraDesc(
-                paciente.getId(), paciente.getIdProfesional()).forEach(epicrisis -> registros.add(registroEpicrisis(epicrisis)));
+                paciente.getId(), paciente.getIdProfesional()).forEach(epicrisis -> registros.add(
+                        registroEpicrisis(epicrisis, archivosDe(archivos, "EPICRISIS", epicrisis.getId()))));
 
         repositorioTratamientos.findAllByPacienteIdAndPacienteIdProfesionalOrderByFechaCreacionDesc(
                 paciente.getId(), paciente.getIdProfesional()).forEach(tratamiento -> {
-                    registros.add(registroTratamiento(tratamiento));
-                    tratamiento.getSesiones().forEach(sesion -> registros.add(registroSesion(tratamiento, sesion)));
+                    registros.add(registroTratamiento(tratamiento,
+                            archivosDe(archivos, "TRATAMIENTO", tratamiento.getId())));
+                    tratamiento.getSesiones().forEach(sesion -> registros.add(registroSesion(tratamiento, sesion,
+                            archivosDe(archivos, "SESION", sesion.getId()))));
                 });
 
         registros.sort(Comparator.comparing(HistoriaClinicaDocumento.RegistroClinico::fecha)
                 .thenComparing(HistoriaClinicaDocumento.RegistroClinico::tipo));
         var datosPaciente = new HistoriaClinicaDocumento.Paciente(paciente.getNombre(), paciente.getApellido(),
                 paciente.getDni(), paciente.getTelefono(), paciente.getFechaNacimiento(), paciente.getSexo().name());
-        return new HistoriaClinicaDocumento(fechaGeneracion, datosPaciente, List.copyOf(registros));
+        return new HistoriaClinicaDocumento(fechaGeneracion, datosPaciente, List.copyOf(registros),
+                archivosDe(archivos, "PACIENTE", paciente.getId()));
     }
 
     private HistoriaClinicaDocumento.RegistroClinico registroFicha(FichaPaciente ficha) {
@@ -53,16 +62,18 @@ public class ConstructorHistoriaClinica {
                 ficha.getNombreFicha(), camposFicha(ficha));
     }
 
-    private HistoriaClinicaDocumento.RegistroClinico registroEpicrisis(Epicrisis epicrisis) {
+    private HistoriaClinicaDocumento.RegistroClinico registroEpicrisis(Epicrisis epicrisis,
+            List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos) {
         List<HistoriaClinicaDocumento.Campo> campos = new ArrayList<>();
         campos.add(campo("Observaciones", epicrisis.getObservaciones()));
         agregarEstado(campos, epicrisis.getEstadoRegistro().name());
         agregarFicha(campos, epicrisis.getFichaPacienteSeguimiento());
         return new HistoriaClinicaDocumento.RegistroClinico(epicrisis.getFechaHora(), "EPICRISIS",
-                "Epicrisis", List.copyOf(campos));
+                "Epicrisis", List.copyOf(campos), archivos);
     }
 
-    private HistoriaClinicaDocumento.RegistroClinico registroTratamiento(Tratamiento tratamiento) {
+    private HistoriaClinicaDocumento.RegistroClinico registroTratamiento(Tratamiento tratamiento,
+            List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos) {
         List<HistoriaClinicaDocumento.Campo> campos = new ArrayList<>();
         campos.add(campo("Descripción", tratamiento.getDescripcion()));
         campos.add(campo("Sesiones planificadas", String.valueOf(tratamiento.getCantidadSesionesTotal())));
@@ -70,17 +81,27 @@ public class ConstructorHistoriaClinica {
                 tratamiento.getCantidadSesionesTotal() - tratamiento.getCantidadSesionesFaltantes())));
         agregarEstado(campos, tratamiento.getEstadoRegistro().name());
         return new HistoriaClinicaDocumento.RegistroClinico(tratamiento.getFechaCreacion(), "TRATAMIENTO",
-                tratamiento.getNombre(), List.copyOf(campos));
+                tratamiento.getNombre(), List.copyOf(campos), archivos);
     }
 
-    private HistoriaClinicaDocumento.RegistroClinico registroSesion(Tratamiento tratamiento, SesionTratamiento sesion) {
+    private HistoriaClinicaDocumento.RegistroClinico registroSesion(Tratamiento tratamiento, SesionTratamiento sesion,
+            List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos) {
         List<HistoriaClinicaDocumento.Campo> campos = new ArrayList<>();
         campos.add(campo("Tratamiento", tratamiento.getNombre()));
         campos.add(campo("Observaciones", sesion.getObservaciones()));
         agregarEstado(campos, sesion.getEstadoRegistro().name());
         agregarFicha(campos, sesion.getFichaPacienteSeguimiento());
         return new HistoriaClinicaDocumento.RegistroClinico(sesion.getFechaHora(), "CONSULTA / SESIÓN",
-                "Sesión N.º " + sesion.getNroSesion(), List.copyOf(campos));
+                "Sesión N.º " + sesion.getNroSesion(), List.copyOf(campos), archivos);
+    }
+
+    private List<HistoriaClinicaDocumento.ArchivoAdjunto> archivosDe(
+            List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos, String contexto, Long contextoId) {
+        return archivos.stream().filter(archivo -> archivo.contexto().equals(contexto)
+                        && archivo.contextoId().equals(contextoId))
+                .sorted(Comparator.comparing(HistoriaClinicaDocumento.ArchivoAdjunto::nombreOriginal,
+                        String.CASE_INSENSITIVE_ORDER))
+                .toList();
     }
 
     private void agregarEstado(List<HistoriaClinicaDocumento.Campo> campos, String estado) {

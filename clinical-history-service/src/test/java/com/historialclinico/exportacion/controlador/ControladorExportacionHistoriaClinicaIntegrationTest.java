@@ -105,6 +105,59 @@ class ControladorExportacionHistoriaClinicaIntegrationTest {
     }
 
     @Test
+    void consultaExportacionesDelPacienteDeMasNuevaAMasAntigua() throws Exception {
+        Paciente paciente = crearPaciente(PROFESIONAL, "Orden", "Exportaciones", "40910008");
+        exportar(paciente, "CSV");
+        exportar(paciente, "PDF");
+
+        mockMvc.perform(get("/api/pacientes/{pacienteId}/historia-clinica/exportaciones", paciente.getId())
+                        .with(profesional(PROFESIONAL)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].formato").value("PDF"))
+                .andExpect(jsonPath("$[1].formato").value("CSV"))
+                .andExpect(jsonPath("$[0].pacienteId").value(paciente.getId()))
+                .andExpect(jsonPath("$[0].hashArchivo").isString());
+    }
+
+    @Test
+    void consultaTodosLosDatosDeUnaExportacionPropia() throws Exception {
+        Paciente paciente = crearPaciente(PROFESIONAL, "Detalle", "Exportación", "40910009");
+        mockMvc.perform(post("/api/pacientes/{pacienteId}/historia-clinica/exportar", paciente.getId())
+                        .with(profesional(PROFESIONAL)).contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"formato":"DOCX","motivo":"DERIVACION",
+                                 "detalleMotivo":"Continuidad con otro profesional"}
+                                """))
+                .andExpect(status().isOk());
+        var exportacion = repositorioExportaciones
+                .findAllByProfesionalIdAndPacienteIdOrderByFechaHoraExportacionDesc(PROFESIONAL, paciente.getId())
+                .getFirst();
+
+        mockMvc.perform(get("/api/pacientes/{pacienteId}/historia-clinica/exportaciones/{exportacionId}",
+                        paciente.getId(), exportacion.getId()).with(profesional(PROFESIONAL)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(exportacion.getId()))
+                .andExpect(jsonPath("$.pacienteId").value(paciente.getId()))
+                .andExpect(jsonPath("$.profesionalId").value(PROFESIONAL))
+                .andExpect(jsonPath("$.formato").value("DOCX"))
+                .andExpect(jsonPath("$.motivo").value("DERIVACION"))
+                .andExpect(jsonPath("$.detalleMotivo").value("Continuidad con otro profesional"))
+                .andExpect(jsonPath("$.fechaHoraExportacion").isString())
+                .andExpect(jsonPath("$.nombreArchivo").value(exportacion.getNombreArchivo()))
+                .andExpect(jsonPath("$.hashArchivo").value(exportacion.getHashArchivo()));
+    }
+
+    @Test
+    void noPermiteConsultarExportacionesDePacienteAjeno() throws Exception {
+        Paciente ajeno = crearPaciente(PROFESIONAL + 1, "Paciente", "Ajeno", "40910010");
+
+        mockMvc.perform(get("/api/pacientes/{pacienteId}/historia-clinica/exportaciones", ajeno.getId())
+                        .with(profesional(PROFESIONAL)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void rechazaFormatoInvalidoYMotivoAusente() throws Exception {
         Paciente paciente = crearPaciente(PROFESIONAL, "Julia", "Validación", "40910003");
         mockMvc.perform(post("/api/pacientes/{pacienteId}/historia-clinica/exportar", paciente.getId())

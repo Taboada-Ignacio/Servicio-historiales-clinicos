@@ -75,6 +75,7 @@ public class WordHistoriaClinicaExporter implements HistoriaClinicaExporter {
             crearEncabezadoYPie(documento);
             crearPortada(documento, historia);
             crearDatosPaciente(documento, historia.paciente());
+            crearArchivosPaciente(documento, historia.archivosPaciente());
             crearCronologia(documento, historia);
             documento.getProperties().getCoreProperties().setTitle("Historia clínica completa");
             documento.getProperties().getCoreProperties().setCreator("Servicio de historias clínicas");
@@ -256,8 +257,50 @@ public class WordHistoriaClinicaExporter implements HistoriaClinicaExporter {
                 valor.setStyle("ClinicalBody");
                 valor.createRun().setText(campo.valor());
             }
+            agregarArchivosAdjuntos(celda, registro.archivosAdjuntos());
             espaciador(documento, 55);
         }
+    }
+
+    private void crearArchivosPaciente(XWPFDocument documento,
+            java.util.List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos) {
+        if (archivos.isEmpty()) return;
+        XWPFParagraph titulo = documento.createParagraph();
+        titulo.setStyle("ClinicalHeading1");
+        titulo.createRun().setText("Archivos del paciente");
+        XWPFParagraph descripcion = documento.createParagraph();
+        descripcion.setStyle("ClinicalSubtitle");
+        descripcion.createRun().setText("Documentación asociada directamente al paciente");
+        agregarArchivosAdjuntos(documento, archivos);
+        espaciador(documento, 40);
+    }
+
+    private void agregarArchivosAdjuntos(XWPFDocument documento,
+            java.util.List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos) {
+        for (var archivo : archivos) {
+            XWPFParagraph parrafo = documento.createParagraph();
+            parrafo.setStyle("ClinicalBody");
+            parrafo.createRun().setText(describir(archivo));
+        }
+    }
+
+    private void agregarArchivosAdjuntos(XWPFTableCell celda,
+            java.util.List<HistoriaClinicaDocumento.ArchivoAdjunto> archivos) {
+        if (archivos.isEmpty()) return;
+        XWPFParagraph etiqueta = celda.addParagraph();
+        etiqueta.setStyle("ClinicalLabel");
+        etiqueta.createRun().setText("ARCHIVOS ADJUNTOS");
+        for (var archivo : archivos) {
+            XWPFParagraph parrafo = celda.addParagraph();
+            parrafo.setStyle("ClinicalBody");
+            parrafo.createRun().setText(describir(archivo));
+        }
+    }
+
+    private String describir(HistoriaClinicaDocumento.ArchivoAdjunto archivo) {
+        String descripcion = archivo.descripcion() == null || archivo.descripcion().isBlank()
+                ? "" : " — " + archivo.descripcion();
+        return "• " + archivo.nombreOriginal() + " (" + archivo.categoria() + ")" + descripcion;
     }
 
     private void crearAviso(XWPFDocument documento, String mensaje) {

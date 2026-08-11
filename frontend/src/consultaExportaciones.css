@@ -1,0 +1,28 @@
+.pagina-consulta-exportaciones { max-width: 1180px; }
+.pagina-consulta-exportaciones > .identidad-paciente-epicrisis { margin-top: 26px; }
+.listado-exportaciones-historia,.detalle-exportacion-historia { margin-top: 18px; padding: 26px 30px; }
+.encabezado-listado-exportaciones,.cabecera-detalle-exportacion { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.encabezado-listado-exportaciones h2,.cabecera-detalle-exportacion h2 { margin: 5px 0; color: #294b42; }
+.encabezado-listado-exportaciones > span { padding: 6px 10px; border-radius: 999px; background: #e7f2ed; color: #176b57; font-size: 11px; font-weight: 700; }
+.exportaciones-historia { display: grid; margin-top: 18px; }
+.exportacion-historia { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 15px; padding: 16px 0; border-top: 1px solid #e2ebe7; }
+.exportacion-historia > div { min-width: 0; }
+.exportacion-historia strong,.exportacion-historia small { display: block; }
+.exportacion-historia strong { color: #315047; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exportacion-historia small { margin-top: 5px; color: #7d8c87; font-size: 11px; }
+.exportacion-historia p { margin: 7px 0 0; color: #526a62; font-size: 12px; }
+.formato-exportacion { display: inline-flex; align-items: center; justify-content: center; min-width: 54px; min-height: 34px; padding: 7px 10px; border-radius: 9px; background: #e7f2ed; color: #176b57; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+.formato-exportacion.formato-pdf { background: #f9ece9; color: #a2473d; }
+.formato-exportacion.formato-docx { background: #eaf0fa; color: #355e96; }
+.formato-exportacion.formato-csv,.formato-exportacion.formato-xlsx { background: #e8f5ec; color: #287148; }
+.formato-exportacion.formato-zip { background: #f0eafa; color: #6a4696; }
+.cabecera-detalle-exportacion { padding-bottom: 20px; border-bottom: 1px solid #e2ebe7; }
+.cabecera-detalle-exportacion h2 { overflow-wrap: anywhere; }
+.cabecera-detalle-exportacion p { margin: 0; color: #7d8c87; font-size: 12px; }
+.datos-exportacion-historia { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 20px 0 0; }
+.datos-exportacion-historia > div { padding: 14px 16px; border: 1px solid #e0e9e5; border-radius: 10px; background: #fafcfb; }
+.datos-exportacion-historia dt { color: #7b8b86; font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.datos-exportacion-historia dd { margin: 6px 0 0; color: #294b42; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.datos-exportacion-historia code { color: #315047; font-family: ui-monospace,SFMono-Regular,Consolas,monospace; font-size: 11px; word-break: break-all; }
+.dato-exportacion-ancho { grid-column: 1 / -1; }
+@media (max-width: 700px) { .listado-exportaciones-historia,.detalle-exportacion-historia { padding: 22px 18px; }.encabezado-listado-exportaciones,.cabecera-detalle-exportacion { align-items: stretch; flex-direction: column; }.encabezado-listado-exportaciones > span,.cabecera-detalle-exportacion > .formato-exportacion { align-self: flex-start; }.exportacion-historia { grid-template-columns: auto minmax(0,1fr); }.exportacion-historia > button { grid-column: 1 / -1; width: 100%; }.datos-exportacion-historia { grid-template-columns: 1fr; }.dato-exportacion-ancho { grid-column: auto; } }

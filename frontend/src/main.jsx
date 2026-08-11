@@ -8,6 +8,8 @@ import './edicionPaciente.css'
 import './tratamientos.css'
 import './historiasClinicas.css'
 import './exportacionHistoriaClinica.css'
+import './consultaExportaciones.css'
+import './archivosClinicos.css'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

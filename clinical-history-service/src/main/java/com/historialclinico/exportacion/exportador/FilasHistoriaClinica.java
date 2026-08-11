@@ -23,6 +23,8 @@ final class FilasHistoriaClinica {
         filas.add(new Fila("PACIENTE", "", "Datos identificatorios", "Sexo", paciente.sexo()));
         filas.add(new Fila("PACIENTE", "", "Datos identificatorios", "Teléfono",
                 paciente.telefono() == null || paciente.telefono().isBlank() ? "No informado" : paciente.telefono()));
+        documento.archivosPaciente().forEach(archivo -> filas.add(new Fila("ARCHIVOS DEL PACIENTE", "",
+                "Documentación clínica directa", "Archivo adjunto", describir(archivo))));
         for (var registro : documento.registros()) {
             String fecha = FECHA.format(registro.fecha());
             if (registro.campos().isEmpty()) {
@@ -31,8 +33,16 @@ final class FilasHistoriaClinica {
                 registro.campos().forEach(campo -> filas.add(new Fila(registro.tipo(), fecha,
                         registro.titulo(), campo.nombre(), campo.valor())));
             }
+            registro.archivosAdjuntos().forEach(archivo -> filas.add(new Fila(registro.tipo(), fecha,
+                    registro.titulo(), "Archivo adjunto", describir(archivo))));
         }
         return filas;
+    }
+
+    private static String describir(HistoriaClinicaDocumento.ArchivoAdjunto archivo) {
+        return archivo.descripcion() == null || archivo.descripcion().isBlank()
+                ? archivo.nombreOriginal()
+                : archivo.nombreOriginal() + " — " + archivo.descripcion();
     }
 
     record Fila(String seccion, String fecha, String registro, String campo, String valor) {}

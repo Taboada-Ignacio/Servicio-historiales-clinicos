@@ -9,6 +9,11 @@
   margin-bottom: 16px;
 }
 
+.grilla-opciones-exportacion { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+.resumen-tipo-exportacion { display: grid; gap: 4px; margin-top: 16px; padding: 13px 15px; border: 1px solid #d5e4de; border-radius: 10px; background: #f3f8f6; color: #587068; font-size: 12px; line-height: 1.45; }
+.resumen-tipo-exportacion strong { color: #315047; }
+
 .detalle-motivo-exportacion {
   display: block;
   margin-top: 16px;
@@ -21,6 +26,8 @@
   color: #83908c;
   font-weight: 400;
 }
+
+@media (max-width: 760px) { .grilla-opciones-exportacion { grid-template-columns: 1fr; } }
 
 .detalle-motivo-exportacion textarea {
   display: block;

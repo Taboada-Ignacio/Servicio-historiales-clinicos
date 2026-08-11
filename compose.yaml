@@ -34,17 +34,54 @@ services:
       LOCAL_PROFESSIONAL_ID: ${LOCAL_PROFESSIONAL_ID:-1}
       LOCAL_PROFESSIONAL_NAME: ${LOCAL_PROFESSIONAL_NAME:-Profesional local}
       LOCAL_PROFESSIONAL_LICENSE: ${LOCAL_PROFESSIONAL_LICENSE:-LOCAL}
+      CLINICAL_FILES_BUCKET: ${CLINICAL_FILES_BUCKET:-clinical-files}
+      CLINICAL_FILES_REGION: ${CLINICAL_FILES_REGION:-us-east-1}
+      CLINICAL_FILES_ENDPOINT: ${CLINICAL_FILES_ENDPOINT:-http://minio:9000}
+      CLINICAL_FILES_ACCESS_KEY: ${CLINICAL_FILES_ACCESS_KEY:-minio}
+      CLINICAL_FILES_SECRET_KEY: ${CLINICAL_FILES_SECRET_KEY:-minio123}
+      CLINICAL_FILES_PATH_STYLE: ${CLINICAL_FILES_PATH_STYLE:-true}
+      CLINICAL_FILES_RETENTION_YEARS: ${CLINICAL_FILES_RETENTION_YEARS:-10}
+      CLAMAV_HOST: ${CLAMAV_HOST:-clamav}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      CLAMAV_TIMEOUT_MILLIS: ${CLAMAV_TIMEOUT_MILLIS:-10000}
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_started
+      clamav:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q 'UP'"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 20s
+    restart: unless-stopped
+    networks:
+      - red_clinica
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${CLINICAL_FILES_ACCESS_KEY:-minio}
+      MINIO_ROOT_PASSWORD: ${CLINICAL_FILES_SECRET_KEY:-minio123}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    restart: unless-stopped
+    networks:
+      - red_clinica
+
+  clamav:
+    image: clamav/clamav:stable
+    volumes:
+      - clamav_data:/var/lib/clamav
     restart: unless-stopped
     networks:
       - red_clinica
@@ -69,6 +106,8 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:
+  clamav_data:
 
 networks:
   red_clinica:

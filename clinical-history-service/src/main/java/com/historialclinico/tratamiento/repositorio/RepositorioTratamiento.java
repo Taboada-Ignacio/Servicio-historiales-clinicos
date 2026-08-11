@@ -12,6 +12,7 @@ public interface RepositorioTratamiento extends JpaRepository<Tratamiento, Long>
     List<Tratamiento> findAllByPacienteIdAndPacienteIdProfesionalAndCantidadSesionesFaltantesGreaterThanOrderByFechaCreacionDesc(
             Long idPaciente, Long idProfesional, int minimo);
     boolean existsByIdAndPacienteIdAndPacienteIdProfesional(Long id, Long idPaciente, Long idProfesional);
+    Optional<Tratamiento> findByIdAndPacienteIdProfesional(Long id, Long idProfesional);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select t from Tratamiento t where t.id = :id and t.paciente.id = :idPaciente and t.paciente.idProfesional = :idProfesional")

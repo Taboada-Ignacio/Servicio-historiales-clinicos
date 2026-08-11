@@ -15,6 +15,7 @@ public interface RepositorioEpicrisis extends JpaRepository<Epicrisis, Long> {
             Long idPaciente, Long idProfesional
     );
     boolean existsByIdAndPacienteIdAndPacienteIdProfesional(Long id, Long idPaciente, Long idProfesional);
+    Optional<Epicrisis> findByIdAndPacienteIdProfesional(Long id, Long idProfesional);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select e from Epicrisis e where e.id = :id and e.paciente.id = :idPaciente and e.paciente.idProfesional = :idProfesional")

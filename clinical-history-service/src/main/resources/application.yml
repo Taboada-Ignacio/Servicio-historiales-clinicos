@@ -15,6 +15,10 @@ spring:
           time_zone: UTC
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   security:
     oauth2:
       resourceserver:
@@ -52,3 +56,17 @@ app:
     clave-base64: ${AUDIT_ENCRYPTION_KEY}
     retencion-anios: ${AUDIT_RETENTION_YEARS:10}
     confiar-cabeceras-proxy: ${TRUST_PROXY_HEADERS:false}
+  archivos:
+    cuota-recomendada-bytes: ${CLINICAL_FILES_RECOMMENDED_BYTES:524288000}
+    retencion-anios-minima: ${CLINICAL_FILES_RETENTION_YEARS:10}
+    storage:
+      bucket: ${CLINICAL_FILES_BUCKET:clinical-files}
+      region: ${CLINICAL_FILES_REGION:us-east-1}
+      endpoint: ${CLINICAL_FILES_ENDPOINT:http://localhost:9000}
+      access-key: ${CLINICAL_FILES_ACCESS_KEY:minio}
+      secret-key: ${CLINICAL_FILES_SECRET_KEY:minio123}
+      path-style: ${CLINICAL_FILES_PATH_STYLE:true}
+    malware:
+      host: ${CLAMAV_HOST:localhost}
+      port: ${CLAMAV_PORT:3310}
+      timeout-millis: ${CLAMAV_TIMEOUT_MILLIS:10000}

@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 
 public interface RepositorioSesionTratamiento extends JpaRepository<SesionTratamiento, Long> {
+    Optional<SesionTratamiento> findByIdAndTratamientoPacienteIdProfesional(Long id, Long idProfesional);
     boolean existsByIdAndTratamientoIdAndTratamientoPacienteIdAndTratamientoPacienteIdProfesional(
             Long id, Long idTratamiento, Long idPaciente, Long idProfesional);
 

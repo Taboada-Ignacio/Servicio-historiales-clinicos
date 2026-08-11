@@ -1073,7 +1073,7 @@ docker compose up --build -d
 Compose construye las imágenes y levanta los servicios respetando este orden:
 
 ```text
-PostgreSQL saludable
+PostgreSQL saludable + MinIO + ClamAV
         ↓
 Microservicio saludable y migraciones aplicadas
         ↓
@@ -1086,6 +1086,7 @@ Servicios expuestos:
 - Backend y Swagger: `http://localhost:8080/swagger-ui.html`
 - Estado del backend: `http://localhost:8080/actuator/health`
 - PostgreSQL: `localhost:5432`
+- Object Storage MinIO: `localhost:9000` (consola en `http://localhost:9001`)
 
 Consultar el estado:
 
@@ -1105,7 +1106,7 @@ Detener el sistema sin eliminar los datos:
 docker compose down
 ```
 
-El volumen `postgres_data` conserva PostgreSQL entre reinicios. Para cambiar las credenciales se puede copiar `.env.example` como `.env` y ajustar sus valores antes de levantar los servicios.
+Los volúmenes `postgres_data`, `minio_data` y `clamav_data` conservan metadata, binarios y firmas antivirus entre reinicios. Para cambiar credenciales o apuntar a otro proveedor S3-compatible se puede copiar `.env.example` como `.env`. La retención lógica de adjuntos se configura con `CLINICAL_FILES_RETENTION_YEARS`; el servicio no permite valores menores a 10 años y no purga binarios automáticamente.
 
 ### Desarrollo sin contenerizar
 
