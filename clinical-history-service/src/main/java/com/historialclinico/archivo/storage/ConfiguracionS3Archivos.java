@@ -16,8 +16,8 @@ public class ConfiguracionS3Archivos {
     @Bean
     S3Client clinicalFilesS3Client(@Value("${app.archivos.storage.region:us-east-1}") String region,
             @Value("${app.archivos.storage.endpoint:}") String endpoint,
-            @Value("${app.archivos.storage.access-key:minio}") String accessKey,
-            @Value("${app.archivos.storage.secret-key:minio123}") String secretKey,
+            @Value("${app.archivos.storage.access-key}") String accessKey,
+            @Value("${app.archivos.storage.secret-key}") String secretKey,
             @Value("${app.archivos.storage.path-style:true}") boolean pathStyle) {
         var builder = S3Client.builder()
                 .region(Region.of(region))

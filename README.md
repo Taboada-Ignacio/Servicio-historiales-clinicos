@@ -1064,7 +1064,9 @@ Las pruebas de integración verifican:
 
 ### Ejecución completa con Docker
 
-El único requisito para ejecutar el sistema completo es Docker con Docker Compose. Desde la raíz del repositorio:
+El único requisito para ejecutar el sistema completo es Docker con Docker Compose. Antes del primer inicio, copiar
+`.env.example` como `.env` y completar allí todas las credenciales que están vacías. El archivo `.env` es local y no
+debe versionarse. Desde la raíz del repositorio:
 
 ```bash
 docker compose up --build -d
@@ -1106,7 +1108,7 @@ Detener el sistema sin eliminar los datos:
 docker compose down
 ```
 
-Los volúmenes `postgres_data`, `minio_data` y `clamav_data` conservan metadata, binarios y firmas antivirus entre reinicios. Para cambiar credenciales o apuntar a otro proveedor S3-compatible se puede copiar `.env.example` como `.env`. La retención lógica de adjuntos se configura con `CLINICAL_FILES_RETENTION_YEARS`; el servicio no permite valores menores a 10 años y no purga binarios automáticamente.
+Los volúmenes `postgres_data`, `minio_data` y `clamav_data` conservan metadata, binarios y firmas antivirus entre reinicios. Para cambiar credenciales o apuntar a otro proveedor S3-compatible se editan las variables del `.env` local. La retención lógica de adjuntos se configura con `CLINICAL_FILES_RETENTION_YEARS`; el servicio no permite valores menores a 10 años y no purga binarios automáticamente.
 
 ### Desarrollo sin contenerizar
 
@@ -1119,4 +1121,6 @@ cd clinical-history-service
 mvn test
 ```
 
-Flyway crea y valida automáticamente las tablas. La configuración local predeterminada coincide con las credenciales de `.env.example` y puede reemplazarse mediante `DB_URL`, `DB_USER` y `DB_PASSWORD`.
+Flyway crea y valida automáticamente las tablas. Para ejecutar el microservicio directamente se deben exportar
+`DB_URL`, `DB_USER`, `DB_PASSWORD`, `AUDIT_ENCRYPTION_KEY`, `CLINICAL_FILES_ACCESS_KEY` y
+`CLINICAL_FILES_SECRET_KEY`; Maven y Spring Boot no cargan el archivo `.env` automáticamente.

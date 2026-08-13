@@ -22,8 +22,33 @@ dist/
 
 # Environment and local data
 .env
+.env.*
+!.env.example
+
+# Secrets and private keys
+*.pem
+*.key
+*.p12
+*.jks
+
+# Runtime data and logs
+logs/
 *.log
 data/
+uploads/
+attachments/
+documents/
+backups/
+
+# Database dumps and local backups
+*.sql
+*.dump
+*.backup
+*.bak
+
+# Flyway migrations are source code and must remain versioned
+!clinical-history-service/src/main/resources/db/migration/
+!clinical-history-service/src/main/resources/db/migration/*.sql
 
 # Operating systems
 .DS_Store

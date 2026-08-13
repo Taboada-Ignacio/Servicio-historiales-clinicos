@@ -2,9 +2,9 @@ spring:
   application:
     name: clinical-history-service
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/clinical_history}
-    username: ${DB_USER:clinical_history}
-    password: ${DB_PASSWORD:change_me}
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
   jpa:
     open-in-view: false
     hibernate:
@@ -63,8 +63,8 @@ app:
       bucket: ${CLINICAL_FILES_BUCKET:clinical-files}
       region: ${CLINICAL_FILES_REGION:us-east-1}
       endpoint: ${CLINICAL_FILES_ENDPOINT:http://localhost:9000}
-      access-key: ${CLINICAL_FILES_ACCESS_KEY:minio}
-      secret-key: ${CLINICAL_FILES_SECRET_KEY:minio123}
+      access-key: ${CLINICAL_FILES_ACCESS_KEY}
+      secret-key: ${CLINICAL_FILES_SECRET_KEY}
       path-style: ${CLINICAL_FILES_PATH_STYLE:true}
     malware:
       host: ${CLAMAV_HOST:localhost}
